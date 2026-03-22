@@ -376,51 +376,129 @@ function renderBracketView(admin) {
   if (!S.bracketMatches.length) {
     return `<div class="empty">Lance le tournoi pour générer le tableau.</div>`;
   }
+
   const rounds = [...new Set(S.bracketMatches.map(m => m.round))].sort((a, b) => a - b);
-  const total   = rounds.length;
+  const total  = rounds.length;
+
   const roundName = r => {
     if (r === total - 1) return 'Finale';
     if (r === total - 2) return 'Demi-finale';
     if (r === total - 3) return 'Quart de finale';
     return `Tour ${r + 1}`;
   };
-  const winner = S.bracketMatches.find(m => m.round === total - 1 && m.done && m.winner);
 
-  return `
-  <div class="bracket-scroll">
-    ${winner ? `
-    <div class="winner-banner">
+  // Layout constants
+  const MATCH_W    = 170;  // match card width
+  const MATCH_H    = 64;   // match card height (2 players × 32px)
+  const COL_GAP    = 48;   // horizontal gap between rounds
+  const COL_W      = MATCH_W + COL_GAP;
+  const LABEL_H    = 32;   // round title height
+
+  // Number of slots in round 0 (always the widest)
+  const firstRoundCount = S.bracketMatches.filter(m => m.round === 0).length;
+  // Total vertical space needed
+  const totalSlots = firstRoundCount;
+
+  // For each round, compute vertical positions of match centers
+  function matchCenters(roundIdx) {
+    const count    = S.bracketMatches.filter(m => m.round === roundIdx).length;
+    const slotSize = (totalSlots / count);  // in "slot units"
+    const slotPx   = MATCH_H + 16;         // px per slot in round 0
+    return Array.from({ length: count }, (_, i) => (i + 0.5) * slotSize * slotPx);
+  }
+
+  const svgH = totalSlots * (MATCH_H + 16) + LABEL_H;
+  const svgW = total * COL_W - COL_GAP + 4;
+
+  // Build SVG connector paths between rounds
+  let paths = '';
+  for (let r = 0; r < total - 1; r++) {
+    const fromCenters = matchCenters(r);
+    const toCenters   = matchCenters(r + 1);
+    const fromX = r * COL_W + MATCH_W;
+    const toX   = (r + 1) * COL_W;
+    const midX  = fromX + COL_GAP / 2;
+
+    toCenters.forEach((toY, ti) => {
+      const c1Y = fromCenters[ti * 2]     + LABEL_H;
+      const c2Y = fromCenters[ti * 2 + 1] + LABEL_H;
+      const tY  = toY + LABEL_H;
+      // Line from match1 right → mid
+      paths += `<path d="M${fromX},${c1Y} H${midX} V${tY} H${toX}" fill="none" stroke="var(--border2)" stroke-width="1"/>`;
+      // Line from match2 right → mid (same midX, already drawn the vertical, just the horizontal)
+      paths += `<path d="M${fromX},${c2Y} H${midX}" fill="none" stroke="var(--border2)" stroke-width="1"/>`;
+    });
+  }
+
+  // Build match cards as foreignObject
+  let cards = '';
+  rounds.forEach((r, ri) => {
+    const centers = matchCenters(ri);
+    const ms      = S.bracketMatches.filter(m => m.round === r);
+    const x       = ri * COL_W;
+
+    ms.forEach((m, mi) => {
+      const cy  = centers[mi] + LABEL_H;
+      const y   = cy - MATCH_H / 2;
+      const won1 = m.winner === m.p1 && m.done;
+      const won2 = m.winner === m.p2 && m.done;
+      const s1  = m.score1 !== null && m.score1 !== undefined ? m.score1 : '';
+      const s2  = m.score2 !== null && m.score2 !== undefined ? m.score2 : '';
+      const cursor = admin ? 'cursor:pointer' : '';
+      const onclick = admin ? `onclick="openMatchModal('bracket',${m.id})"` : '';
+
+      cards += `
+      <foreignObject x="${x}" y="${y}" width="${MATCH_W}" height="${MATCH_H}">
+        <div xmlns="http://www.w3.org/1999/xhtml"
+          style="width:${MATCH_W}px;height:${MATCH_H}px;border:0.5px solid var(--border2);border-radius:8px;overflow:hidden;background:var(--bg);${cursor};box-sizing:border-box;"
+          ${onclick}>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:50%;font-size:12px;font-family:inherit;
+            ${won1 ? 'font-weight:600;' : 'color:var(--text2);'}
+            border-bottom:0.5px solid var(--border);">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:${won1?'var(--text)':'var(--text2)'}">${getName(m.p1)}</span>
+            <span style="font-size:11px;min-width:18px;text-align:right;margin-left:6px;${won1?'background:var(--text);color:var(--bg);border-radius:3px;padding:1px 5px;':''}">${s1}</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:50%;font-size:12px;font-family:inherit;
+            ${won2 ? 'font-weight:600;' : ''}">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:${won2?'var(--text)':'var(--text2)'}">${getName(m.p2)}</span>
+            <span style="font-size:11px;min-width:18px;text-align:right;margin-left:6px;${won2?'background:var(--text);color:var(--bg);border-radius:3px;padding:1px 5px;':''}">${s2}</span>
+          </div>
+        </div>
+      </foreignObject>`;
+    });
+
+    // Round title
+    cards += `
+    <text x="${x + MATCH_W / 2}" y="${LABEL_H - 10}" text-anchor="middle"
+      font-size="10" font-weight="500" fill="var(--text2)"
+      font-family="-apple-system,Helvetica Neue,Arial,sans-serif"
+      letter-spacing="0.06em"
+      style="text-transform:uppercase">${roundName(r)}</text>`;
+  });
+
+  // Winner trophy after last round
+  const winnerMatch = S.bracketMatches.find(m => m.round === total - 1 && m.done && m.winner);
+  let winnerBanner = '';
+  if (winnerMatch) {
+    winnerBanner = `
+    <div class="winner-banner" style="margin-bottom:1.25rem">
       <span style="font-size:20px">🏆</span>
       <div>
         <div style="font-size:11px;color:var(--text2)">Vainqueur</div>
-        <div style="font-weight:600;font-size:15px">${getName(winner.winner)}</div>
+        <div style="font-weight:600;font-size:15px">${getName(winnerMatch.winner)}</div>
       </div>
-    </div>` : ''}
-    <div class="bracket">
-      ${rounds.map((r, ri) => {
-        const ms = S.bracketMatches.filter(m => m.round === r);
-        const spacing = Math.pow(2, r);
-        return `
-        <div class="b-round">
-          <div class="b-rtitle">${roundName(r)}</div>
-          <div class="b-matches" style="gap:${spacing * 14}px">
-            ${ms.map(m => `
-            <div class="b-match" ${admin ? `onclick="openMatchModal('bracket',${m.id})"` : ''}>
-              <div class="b-player ${m.winner === m.p1 && m.done ? 'win' : ''}">
-                <span class="bname">${getName(m.p1)}</span>
-                <span class="bscore">${m.score1 !== null && m.score1 !== undefined ? m.score1 : ''}</span>
-              </div>
-              <div class="b-player ${m.winner === m.p2 && m.done ? 'win' : ''}">
-                <span class="bname">${getName(m.p2)}</span>
-                <span class="bscore">${m.score2 !== null && m.score2 !== undefined ? m.score2 : ''}</span>
-              </div>
-            </div>`).join('')}
-          </div>
-        </div>
-        ${ri < rounds.length - 1 ? `<div style="width:20px;border-top:0.5px solid var(--border);margin-top:${spacing * 14 / 2 + 24}px;align-self:flex-start"></div>` : ''}`;
-      }).join('')}
-    </div>
-  </div>`;
+    </div>`;
+  }
+
+  return `
+  ${winnerBanner}
+  <div style="overflow-x:auto;padding-bottom:1rem">
+    <svg width="${svgW}" height="${svgH}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible">
+      ${paths}
+      ${cards}
+    </svg>
+  </div>
+  ${admin ? `<p style="font-size:12px;color:var(--text2);margin-top:.5rem">Cliquez sur un match pour saisir le score.</p>` : ''}`;
 }
 
 function renderStandings() {
