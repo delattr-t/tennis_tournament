@@ -25,6 +25,7 @@ let S = {
   adminLogged: false,
   adminPwd: 'tennis123',
   currentModal: null,   // { type: 'pool'|'bracket', id: number }
+  myPlayerId: null,     // selected player in "Mes matchs"
 
   tournament: {
     name: 'Mon Tournoi de Tennis',
@@ -113,13 +114,21 @@ function renderPublic() {
     { id: 'register', label: 'Inscription' },
     { id: 'bracket',  label: 'Tableau' },
     ...(S.tournament.format === 'pools+bracket' ? [{ id: 'pools', label: 'Poules' }] : []),
+    { id: 'matchs',   label: 'Mes matchs' },
     { id: 'players',  label: 'Joueurs' },
   ];
+  const tabRenderers = {
+    register: renderRegister,
+    bracket:  () => renderBracketView(false),
+    pools:    () => renderPoolsView(false),
+    matchs:   renderMyMatches,
+    players:  renderPlayersPublic,
+  };
   return `
   <div class="tab-bar">${tabs.map(t => `
     <button class="tab ${S.pubTab === t.id ? 'active' : ''}" onclick="setPubTab('${t.id}')">${t.label}</button>`).join('')}
   </div>
-  ${{ register: renderRegister, bracket: () => renderBracketView(false), pools: () => renderPoolsView(false), players: renderPlayersPublic }[S.pubTab]?.() || ''}`;
+  ${tabRenderers[S.pubTab]?.() || ''}`;
 }
 
 function renderRegister() {
@@ -184,6 +193,92 @@ function renderAdmin() {
     <button class="tab ${S.adminTab === t.id ? 'active' : ''}" onclick="setAdminTab('${t.id}')">${t.label}</button>`).join('')}
   </div>
   ${renders[S.adminTab]?.() || ''}`;
+}
+
+function renderMyMatches() {
+  // Player selector
+  const pid = S.myPlayerId || null;
+  const allMatches = [...S.poolMatches, ...S.bracketMatches];
+
+  const playerSelector = `
+  <div class="frow" style="margin-bottom:1.25rem;align-items:flex-end">
+    <div class="fg" style="max-width:280px">
+      <label>Qui êtes-vous ?</label>
+      <select onchange="S.myPlayerId=parseInt(this.value)||null;render()">
+        <option value="">— Sélectionnez votre nom</option>
+        ${S.players.map(p => `<option value="${p.id}" ${pid === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+      </select>
+    </div>
+  </div>`;
+
+  if (!pid) return playerSelector + `<div class="empty">Sélectionnez votre nom pour voir vos matchs et contacts.</div>`;
+
+  const myMatches = allMatches.filter(m => m.p1 === pid || m.p2 === pid);
+  if (!myMatches.length) return playerSelector + `<div class="empty">Aucun match programmé pour l'instant.</div>`;
+
+  const matchCards = myMatches.map(m => {
+    const oppId   = m.p1 === pid ? m.p2 : m.p1;
+    const opp     = S.players.find(p => p.id === oppId);
+    const isPool  = S.poolMatches.includes(m);
+    const label   = isPool ? `Poule ${String.fromCharCode(65 + (m.pool || 0))}` : (() => {
+      const rounds = [...new Set(S.bracketMatches.map(x => x.round))].sort((a,b)=>a-b);
+      const total  = rounds.length;
+      const r      = m.round;
+      if (r === total - 1) return 'Finale';
+      if (r === total - 2) return 'Demi-finale';
+      if (r === total - 3) return 'Quart de finale';
+      return `Tour ${r + 1}`;
+    })();
+
+    const myScore  = m.p1 === pid ? m.score1 : m.score2;
+    const oppScore = m.p1 === pid ? m.score2 : m.score1;
+    const iWon     = m.done && m.winner === pid;
+    const oppWon   = m.done && m.winner === oppId;
+
+    const ci = opp ? S.players.indexOf(opp) : 0;
+    const c  = ac(ci);
+
+    return `
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span class="pill" style="background:var(--bg2);color:var(--text2)">${label}</span>
+        ${m.done
+          ? `<span class="pill" style="background:${iWon ? 'var(--green-bg)' : 'var(--red-bg)'};color:${iWon ? 'var(--green)' : 'var(--red)'}">
+              ${iWon ? 'Victoire' : 'Défaite'}
+             </span>`
+          : `<span class="pill" style="background:var(--amber-bg);color:var(--amber)">À jouer</span>`}
+      </div>
+
+      ${m.done ? `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius)">
+        <span style="flex:1;font-size:13px;font-weight:${iWon?600:400}">Vous</span>
+        <span style="font-size:18px;font-weight:600;letter-spacing:2px">${myScore !== null && myScore !== undefined ? myScore : '—'} — ${oppScore !== null && oppScore !== undefined ? oppScore : '—'}</span>
+        <span style="flex:1;font-size:13px;text-align:right;font-weight:${oppWon?600:400}">${opp ? opp.name : 'Adversaire'}</span>
+      </div>` : ''}
+
+      ${opp ? `
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="avatar" style="width:44px;height:44px;background:${c.bg};color:${c.txt};font-size:14px">${ini(opp.name)}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px;margin-bottom:2px">${opp.name}</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${opp.level || 'Niveau non renseigné'}</div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            ${opp.phone ? `<div style="display:flex;gap:8px;font-size:13px;align-items:center">
+              <span style="color:var(--text2);min-width:36px;font-size:12px">Tél.</span>
+              <a href="tel:${opp.phone}" style="color:var(--blue);text-decoration:none">${opp.phone}</a>
+            </div>` : ''}
+            ${opp.email ? `<div style="display:flex;gap:8px;font-size:13px;align-items:center">
+              <span style="color:var(--text2);min-width:36px;font-size:12px">Email</span>
+              <a href="mailto:${opp.email}" style="color:var(--blue);text-decoration:none">${opp.email}</a>
+            </div>` : ''}
+            ${!opp.phone && !opp.email ? `<span style="font-size:12px;color:var(--text2)">Pas de contact renseigné</span>` : ''}
+          </div>
+        </div>
+      </div>` : `<div style="font-size:13px;color:var(--text2)">Adversaire non encore connu (TBD)</div>`}
+    </div>`;
+  }).join('');
+
+  return playerSelector + matchCards;
 }
 
 function renderAdminLogin() {
@@ -540,7 +635,6 @@ function renderModal() {
   const match = arr.find(x => x.id === m.id);
   if (!match) return;
 
-  // Determine score mode for this specific match
   const usesSets = S.tournament.scoreMode === 'sets' ||
     (S.tournament.scoreMode === 'both' && m.type === 'bracket' && match.round >= 2);
 
@@ -554,6 +648,7 @@ function renderModal() {
   <div class="modal">
     <h3>Saisir le score</h3>
     <p class="modal-sub">${n1} vs ${n2}</p>
+
     ${usesSets ? `
       <div id="sets-container">
         ${sets.map((s, i) => `
@@ -575,6 +670,21 @@ function renderModal() {
         <input type="number" class="sinput" id="ms2" value="${match.score2 !== null && match.score2 !== undefined ? match.score2 : ''}" min="0" placeholder="0" />
       </div>
     `}
+
+    <div style="margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Désigner le vainqueur :</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn ${match.winner === match.p1 ? 'btn-success' : ''}" style="flex:1;justify-content:center;${match.winner === match.p1 ? 'font-weight:600' : ''}"
+          onclick="setWinner('${m.type}',${m.id},'p1')">
+          ${match.winner === match.p1 ? '✓ ' : ''}${n1}
+        </button>
+        <button class="btn ${match.winner === match.p2 ? 'btn-success' : ''}" style="flex:1;justify-content:center;${match.winner === match.p2 ? 'font-weight:600' : ''}"
+          onclick="setWinner('${m.type}',${m.id},'p2')">
+          ${match.winner === match.p2 ? '✓ ' : ''}${n2}
+        </button>
+      </div>
+    </div>
+
     <div class="modal-actions">
       ${match.done ? `<button class="btn btn-danger" onclick="resetMatch('${m.type}',${m.id})">Réinitialiser</button>` : ''}
       <button class="btn" onclick="closeModal()">Annuler</button>
@@ -627,6 +737,21 @@ function saveScore(type, id, usesSets) {
   if (type === 'pool') propagatePoolToQuals();
   if (type === 'bracket') propagateBracket();
   closeModal();
+}
+
+function setWinner(type, id, which) {
+  const arr   = type === 'pool' ? S.poolMatches : S.bracketMatches;
+  const match = arr.find(x => x.id === id);
+  if (!match) return;
+  // Toggle: click again to deselect
+  const newWinner = which === 'p1' ? match.p1 : match.p2;
+  match.winner = match.winner === newWinner ? null : newWinner;
+  match.done   = match.winner !== null;
+  if (type === 'pool') propagatePoolToQuals();
+  if (type === 'bracket') propagateBracket();
+  // Re-open the modal to reflect updated state
+  S.currentModal = { type, id };
+  render();
 }
 
 function resetMatch(type, id) {
