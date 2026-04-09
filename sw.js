@@ -1,43 +1,32 @@
 // ============================================================
 //  Tennis Tournament — Service Worker
-//  Gère : cache offline + notifications push
+//  Cache désactivé temporairement pour forcer les mises à jour
 // ============================================================
 
-const CACHE_NAME = 'tennis-v2';
-const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
+const CACHE_NAME = 'tennis-v3-nocache';
 
-// ---- INSTALL : mise en cache des assets ----
 self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
   self.skipWaiting();
 });
 
-// ---- ACTIVATE : nettoyage anciens caches ----
 self.addEventListener('activate', e => {
+  // Supprimer TOUS les anciens caches
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+      Promise.all(keys.map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// ---- FETCH : serve depuis le cache si dispo ----
+// Ne JAMAIS servir depuis le cache — toujours le réseau
 self.addEventListener('fetch', e => {
-  // Ne pas intercepter les requêtes Supabase
-  if (e.request.url.includes('supabase.co')) return;
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  );
+  e.respondWith(fetch(e.request));
 });
 
-// ---- PUSH : réception notification ----
+// Notifications push
 self.addEventListener('push', e => {
   let data = { title: '🎾 Tournoi de Tennis', body: 'Vous avez un match à jouer !', url: '/' };
   try { data = { ...data, ...e.data.json() }; } catch {}
-
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
@@ -46,18 +35,12 @@ self.addEventListener('push', e => {
       tag: 'tennis-match',
       renotify: true,
       data: { url: data.url },
-      actions: [
-        { action: 'open', title: 'Voir le tournoi' },
-        { action: 'dismiss', title: 'Ignorer' }
-      ]
     })
   );
 });
 
-// ---- NOTIFICATION CLICK ----
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  if (e.action === 'dismiss') return;
   const url = e.notification.data?.url || '/';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cls => {
