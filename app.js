@@ -944,10 +944,17 @@ async function submitAuth(){
   if(!email||!pwd){S.error='Email et mot de passe requis';render();return;}
   S.error=null;
   if(S.authMode==='signup'){
-    const {error}=await sb.auth.signUp({email,password:pwd});
+    const {data, error}=await sb.auth.signUp({email,password:pwd});
     if(error){S.error=error.message;render();return;}
-    alert('Compte créé ! Vérifiez votre email pour confirmer, puis connectez-vous.');
-    S.authMode='login';render();
+    // Connexion directe si pas de confirmation email requise
+    const {error: loginError}=await sb.auth.signInWithPassword({email,password:pwd});
+    if(loginError){
+      // La confirmation email est peut-être activée
+      alert('Compte créé ! Vérifiez votre email pour confirmer, puis connectez-vous.');
+      S.authMode='login';render();
+    } else {
+      S.page='home';render();
+    }
   } else {
     const {error}=await sb.auth.signInWithPassword({email,password:pwd});
     if(error){S.error='Email ou mot de passe incorrect';render();return;}
