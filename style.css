@@ -1,7 +1,9 @@
 /* ---- Reset & Base ---- */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Force thème clair — jamais de dark mode */
 :root {
+  color-scheme: light;
   --bg: #ffffff;
   --bg2: #f5f5f3;
   --bg3: #efefec;
@@ -22,73 +24,29 @@
   --amber: #633806;
 }
 
-/* Pas de dark mode — on force toujours le thème clair pour l'appli tennis */
-
-/* ---- Body & Background ---- */
-html { background: #ffffff; }
+html { background: #ffffff !important; }
 
 body {
   font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  color: #1a1a18;
+  color: #1a1a18 !important;
+  background: #ffffff !important;
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
-  background-color: #ffffff;
+}
+
+/* Contenu principal — marges pour laisser place aux bandes vertes */
+#root {
   position: relative;
+  z-index: 2;
+  margin: 0 88px;
+  background: #ffffff;
+  min-height: 100vh;
+  box-shadow: 0 0 20px rgba(0,0,0,0.08);
 }
 
-/* Bandes vertes fixes sur les côtés via pseudo-éléments */
-body::before,
-body::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  width: 120px;
-  z-index: 0;
-  pointer-events: none;
-}
-
-body::before {
-  left: 0;
-  background: #2D6A1F;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 12%, calc(100% - 4px) 25%, calc(100% - 14px) 44%, calc(100% - 2px) 62%, calc(100% - 16px) 78%, calc(100% - 6px) 100%, 0 100%);
-}
-
-body::after {
-  right: 0;
-  background: #2D6A1F;
-  clip-path: polygon(12px 0, 100% 0, 100% 100%, 6px 100%, 16px 78%, 2px 62%, 14px 44%, 4px 25%, 12px 12%);
-}
-
-/* Lignes de texture herbe */
-body::before {
-  background-image: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 18px,
-    rgba(255,255,255,0.06) 18px,
-    rgba(255,255,255,0.06) 20px
-  );
-  background-color: #2D6A1F;
-}
-
-/* Ligne orange gauche */
-#bg-left, #bg-right {
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  z-index: 1;
-  pointer-events: none;
-  background: #E8640A;
-  border-radius: 3px;
-}
-#bg-left  { left: 112px; clip-path: path('M 0 0 Q 8 150 -2 300 Q -10 450 4 600 Q 14 750 0 900'); }
-#bg-right { right: 112px; clip-path: path('M 6 0 Q -2 150 8 300 Q 16 450 2 600 Q -8 750 6 900'); }
-
-/* Contenu au dessus du fond */
-#root { position: relative; z-index: 2; }
+@media (max-width: 480px) { #root { margin: 0 72px; } }
+@media (max-width: 360px) { #root { margin: 0 58px; } }
 
 /* ---- App container ---- */
 .app {
