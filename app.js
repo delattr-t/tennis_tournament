@@ -334,117 +334,131 @@ function renderHome() {
   return `<div class="app">
     <div class="app-header">
       <div>
-        <h1>🎾 Tournois de tennis</h1>
-        <div style="font-size:13px;color:var(--text2);margin-top:3px">Créez et partagez vos tournois</div>
+        <h1>🎾 Tennis</h1>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <div style="display:flex;gap:8px;align-items:center">
         ${S.user
-          ? `<span style="font-size:13px;color:var(--text2)">${S.profile?.username||S.user.email}</span>
-             <button class="btn" onclick="signOut()">Déconnexion</button>`
+          ? `<span style="font-size:12px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${S.profile?.username||S.user.email}</span>
+             <button class="btn btn-sm btn-ghost" onclick="signOut()">Déco.</button>`
           : `<button class="btn btn-primary" onclick="goAuth()">Se connecter</button>`}
       </div>
     </div>
-
-    <!-- Bannière install PWA sur home -->
-    ${!S.pwaInstalled && (window.canInstallPWA?.() || window.isIOS?.()) ? `
-    <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;gap:12px;padding:.75rem 1rem">
-      <div style="font-size:24px">📱</div>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:500">Installer l'app</div>
-        <div style="font-size:12px;color:var(--text2)">Accès rapide + notifications sur votre téléphone</div>
-      </div>
-      ${window.canInstallPWA?.() ? `<button class="btn btn-sm btn-primary" onclick="installPWA()">Installer</button>` : ''}
-    </div>` : ''}
-
     ${S.user ? renderMyTournaments() : renderLanding()}
   </div>`;
 }
 
 function renderLanding() {
-  return `<div style="max-width:520px;margin:3rem auto;text-align:center">
-    <div style="font-size:48px;margin-bottom:1rem">🎾</div>
-    <h2 style="margin-bottom:.5rem;font-size:22px">Organisez vos tournois entre amis</h2>
-    <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:1.5rem">
-      Créez un tournoi, partagez le lien dans WhatsApp.<br>
-      Vos amis s'inscrivent en un clic et reçoivent des notifications pour leurs matchs.
-    </p>
-    <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick="goAuth()">
-      Commencer — c'est gratuit
+  return `
+  <div class="hero">
+    <div style="font-size:52px;margin-bottom:12px">🎾</div>
+    <h2>Organisez vos tournois entre amis</h2>
+    <p style="margin-top:8px;margin-bottom:20px">Créez un tournoi, partagez le lien WhatsApp.<br>Inscriptions, tableau, scores — tout en un.</p>
+    <button class="btn btn-primary" style="font-size:15px;padding:13px 32px;border-radius:50px" onclick="goAuth()">
+      Commencer gratuitement
     </button>
-    <p style="font-size:12px;color:var(--text2);margin-top:1rem">Connexion sans mot de passe · PWA installable · Notifications</p>
+    <p style="font-size:12px;margin-top:14px;opacity:0.6">Sans mot de passe · Notifications · Installable</p>
+  </div>
+  <div style="padding:20px 16px">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${[['🏆','Créez votre tournoi','Simple, double, poules ou tableau direct'],
+         ['📤','Partagez en un clic','Un lien WhatsApp suffit pour inviter tout le monde'],
+         ['🔔','Notifications','Chaque joueur est alerté quand il a un match à jouer']
+        ].map(([icon,title,desc])=>`
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);border-radius:var(--rl);border:1px solid var(--border)">
+          <div style="font-size:26px;flex-shrink:0">${icon}</div>
+          <div>
+            <div style="font-weight:600;font-size:14px;margin-bottom:2px">${title}</div>
+            <div style="font-size:13px;color:var(--text2)">${desc}</div>
+          </div>
+        </div>`).join('')}
+    </div>
   </div>`;
 }
 
 function renderMyTournaments() {
-  return `<div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-      <h2 style="margin:0">Mes tournois</h2>
-      <button class="btn btn-primary" onclick="S.page='create';S.error=null;render()">+ Nouveau tournoi</button>
+  return `
+  ${!S.pwaInstalled && (window.canInstallPWA?.() || window.isIOS?.()) ? `
+  <div style="background:var(--tennis-green);padding:10px 16px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:20px">📱</div>
+    <div style="flex:1;color:#fff">
+      <div style="font-size:13px;font-weight:600">Installer l'app</div>
+      <div style="font-size:11px;opacity:0.8">Accès rapide + notifications</div>
     </div>
-    ${!S.myTournaments.length
-      ? `<div class="card" style="text-align:center;padding:2rem">
-          <div style="font-size:32px;margin-bottom:.75rem">🎾</div>
-          <div style="margin-bottom:1rem;color:var(--text2)">Aucun tournoi créé.</div>
-          <button class="btn btn-primary" onclick="S.page='create';S.error=null;render()">Créer mon premier tournoi</button>
-         </div>`
-      : `<div class="grid3">${S.myTournaments.map(t=>`
-          <div class="card" style="cursor:pointer" onclick="goTournament('${t.slug}')">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-              <div style="font-weight:600;font-size:14px;flex:1;margin-right:8px">${t.name}</div>
-              <span class="status s-${t.status}" style="font-size:10px">${statusLabel(t.status)}</span>
-            </div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
-              <span class="pill ${t.mode==='double'?'pill-double':'pill-simple'}">${t.mode==='double'?'Double':'Simple'}</span>
-              <span style="margin-left:4px">${t.format==='pools+bracket'?'Poules + Tableau':'Tableau direct'}</span>
-            </div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn-sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();goTournament('${t.slug}')">Gérer</button>
-              <button class="btn btn-sm btn-success" onclick="event.stopPropagation();shareLink('${t.slug}')">Partager</button>
-            </div>
-          </div>`).join('')}</div>`}
+    ${window.canInstallPWA?.() ? `<button class="btn btn-sm" style="background:#fff;color:var(--tennis-green);border:none;font-weight:700" onclick="installPWA()">Installer</button>` : ''}
+  </div>` : ''}
+  <div style="padding:16px">
+    <div class="section-header">
+      <h2>Mes tournois</h2>
+      <button class="btn btn-primary btn-sm" onclick="S.page='create';S.error=null;render()">+ Nouveau</button>
+    </div>
+    ${!S.myTournaments.length ? `
+      <div class="empty">
+        <div style="font-size:48px;margin-bottom:12px">🎾</div>
+        <div style="font-weight:600;margin-bottom:6px">Aucun tournoi encore</div>
+        <div style="font-size:13px;margin-bottom:20px;color:var(--text2)">Créez votre premier tournoi et invitez vos amis !</div>
+        <button class="btn btn-primary" onclick="S.page='create';S.error=null;render()">Créer un tournoi</button>
+      </div>` :
+      S.myTournaments.map(t=>`
+      <div class="tournament-card" style="margin-bottom:12px" onclick="goTournament('${t.slug}')">
+        <div class="tournament-card-header">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="font-weight:700;font-size:15px">${t.name}</div>
+            <span class="status s-${t.status}">${statusLabel(t.status)}</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <span class="pill ${t.mode==='double'?'pill-double':'pill-simple'}" style="background:rgba(255,255,255,0.2);color:#fff">${t.mode==='double'?'Double':'Simple'}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.7)">${t.format==='pools+bracket'?'Poules + Tableau':'Tableau direct'}</span>
+          </div>
+        </div>
+        <div class="tournament-card-actions">
+          <button class="btn btn-sm" style="flex:1" onclick="event.stopPropagation();goTournament('${t.slug}')">Gérer →</button>
+          <button class="btn btn-sm btn-success" onclick="event.stopPropagation();shareLink('${t.slug}')">📤 Partager</button>
+        </div>
+      </div>`).join('')}
   </div>`;
 }
 
 // ============================================================
-//  AUTH — Magic Link (sans mot de passe)
+//  AUTH — Magic Link
 // ============================================================
 function renderAuth() {
-  return `<div class="app"><div style="max-width:380px;margin:2rem auto">
-    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.error=null;S.successMsg=null;render()">← Retour</button>
-    <div class="card">
-      ${!S.successMsg ? `
-        <div style="text-align:center;margin-bottom:1.25rem">
-          <div style="font-size:36px;margin-bottom:8px">🔗</div>
-          <h3 style="margin-bottom:4px">Connexion sans mot de passe</h3>
-          <p style="font-size:13px;color:var(--text2)">Entrez votre email — on vous envoie un lien magique pour vous connecter instantanément.</p>
-        </div>
-        ${S.error?`<div style="padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px">
-          <span>⚠️</span><span>${S.error}</span>
-        </div>`:''}
-        <div class="fg" style="margin-bottom:1rem">
-          <label>Votre email</label>
-          <input type="email" id="auth-email" placeholder="email@exemple.com"
-            onkeydown="if(event.key==='Enter')submitMagicLink()" autofocus/>
-        </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="submitMagicLink()">
-          Recevoir le lien de connexion
-        </button>
-        <p style="text-align:center;font-size:12px;color:var(--text2);margin-top:12px">
-          Première fois ? Un compte est créé automatiquement.
-        </p>
-      ` : `
-        <div style="text-align:center;padding:1rem 0">
-          <div style="font-size:48px;margin-bottom:12px">📬</div>
-          <h3 style="margin-bottom:8px">Vérifiez votre email !</h3>
-          <p style="font-size:14px;color:var(--text2);line-height:1.6">${S.successMsg}</p>
-          <p style="font-size:12px;color:var(--text3);margin-top:12px">Le lien est valable 1 heure.</p>
-          <button class="btn" style="margin-top:1.25rem" onclick="S.successMsg=null;S.error=null;render()">
-            ← Changer d'email
-          </button>
-        </div>
-      `}
+  return `<div class="app">
+    <div class="app-header">
+      <button class="btn btn-ghost btn-sm" onclick="S.page='home';S.error=null;S.successMsg=null;render()">← Retour</button>
     </div>
-  </div></div>`;
+    <div style="padding:16px">
+    ${!S.successMsg ? `
+      <div style="text-align:center;padding:24px 0 20px">
+        <div style="width:64px;height:64px;background:var(--tennis-green-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px">🔗</div>
+        <h2 style="margin-bottom:6px">Connexion</h2>
+        <p style="font-size:14px;color:var(--text2);line-height:1.5">Entrez votre email — on vous envoie un lien pour vous connecter instantanément, sans mot de passe.</p>
+      </div>
+      ${S.error?`<div style="padding:12px 14px;background:var(--c-red-bg);color:var(--c-red);border-radius:var(--r);margin-bottom:14px;font-size:13px;display:flex;gap:8px">
+        <span>⚠️</span><span>${S.error}</span>
+      </div>`:''}
+      <div class="fg" style="margin-bottom:16px">
+        <label>Adresse email</label>
+        <input type="email" id="auth-email" placeholder="votre@email.com" onkeydown="if(event.key==='Enter')submitMagicLink()" autofocus style="height:50px;font-size:16px"/>
+      </div>
+      <button class="btn btn-primary" style="width:100%;height:50px;font-size:15px;border-radius:50px" onclick="submitMagicLink()">
+        Recevoir le lien de connexion
+      </button>
+      <p style="text-align:center;font-size:12px;color:var(--text2);margin-top:14px">
+        Première fois ? Un compte est créé automatiquement.
+      </p>
+    ` : `
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:56px;margin-bottom:16px">📬</div>
+        <h2 style="margin-bottom:8px">Vérifiez votre email !</h2>
+        <p style="font-size:14px;color:var(--text2);line-height:1.6">${S.successMsg}</p>
+        <p style="font-size:12px;color:var(--text3);margin-top:10px">Le lien est valable 1 heure.</p>
+        <button class="btn btn-sm btn-ghost" style="margin-top:20px" onclick="S.successMsg=null;S.error=null;render()">
+          ← Changer d'email
+        </button>
+      </div>
+    `}
+    </div>
+  </div>`;
 }
 
 // ============================================================
