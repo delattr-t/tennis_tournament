@@ -77,8 +77,15 @@ async function boot() {
 
   S.loading = false; render();
 
-  sb.auth.onAuthStateChange(async (_, session) => {
+  sb.auth.onAuthStateChange(async (event, session) => {
     S.user = session?.user || null;
+    // Supabase envoie PASSWORD_RECOVERY quand l'utilisateur clique le lien email
+    if (event === 'PASSWORD_RECOVERY') {
+      S.page = 'reset-password';
+      S.loading = false;
+      render();
+      return;
+    }
     if (S.user) await loadProfile(); else { S.profile = null; S.myTournaments = []; }
     render();
   });
@@ -152,10 +159,11 @@ function render() {
 }
 
 function renderPage() {
-  if (S.page === 'install')    return renderInstallPage();
-  if (S.page === 'auth')       return renderAuth();
-  if (S.page === 'create')     return renderCreate();
-  if (S.page === 'tournament') return renderTournamentPage();
+  if (S.page === 'reset-password') return renderResetPassword();
+  if (S.page === 'install')        return renderInstallPage();
+  if (S.page === 'auth')           return renderAuth();
+  if (S.page === 'create')         return renderCreate();
+  if (S.page === 'tournament')     return renderTournamentPage();
   return renderHome();
 }
 
@@ -257,6 +265,65 @@ async function continueToTournament() {
 }
 
 // ============================================================
+//  RESET PASSWORD PAGE
+// ============================================================
+function renderResetPassword() {
+  return `<div class="app"><div style="max-width:380px;margin:2rem auto">
+    <div class="card">
+      <h3 style="margin-bottom:.25rem">Nouveau mot de passe</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:1rem">Choisissez un nouveau mot de passe pour votre compte.</p>
+      ${S.error?`<div style="padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px">
+        <span>⚠️</span><span>${S.error}</span>
+      </div>`:''}
+      ${S.successMsg?`<div style="padding:10px 12px;background:var(--green-bg);color:var(--green);border-radius:var(--radius);margin-bottom:12px;font-size:13px">
+        ✓ ${S.successMsg}
+      </div>`:''}
+      <div class="fg" style="margin-bottom:6px"><label>Nouveau mot de passe</label>
+        <div style="position:relative">
+          <input type="password" id="new-pwd1" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitResetPassword()"
+            style="padding-right:44px"/>
+          <button onclick="togglePwdField('new-pwd1','toggle1')" type="button" id="toggle1"
+            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;padding:0;line-height:1">👁</button>
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:1rem"><label>Confirmer le mot de passe</label>
+        <div style="position:relative">
+          <input type="password" id="new-pwd2" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitResetPassword()"
+            style="padding-right:44px"/>
+          <button onclick="togglePwdField('new-pwd2','toggle2')" type="button" id="toggle2"
+            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;padding:0;line-height:1">👁</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:1rem">Min. 6 caractères</div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitResetPassword()">Enregistrer le mot de passe</button>
+    </div>
+  </div></div>`;
+}
+
+function togglePwdField(inputId, btnId) {
+  const input = document.getElementById(inputId);
+  const btn   = document.getElementById(btnId);
+  if (!input) return;
+  if (input.type === 'password') { input.type = 'text';     btn.textContent = '🙈'; }
+  else                           { input.type = 'password'; btn.textContent = '👁'; }
+  input.focus();
+}
+
+async function submitResetPassword() {
+  const pwd1 = document.getElementById('new-pwd1')?.value;
+  const pwd2 = document.getElementById('new-pwd2')?.value;
+  if (!pwd1 || pwd1.length < 6) { S.error = 'Le mot de passe doit faire au moins 6 caractères'; render(); return; }
+  if (pwd1 !== pwd2) { S.error = 'Les deux mots de passe ne correspondent pas'; render(); return; }
+  S.error = null;
+  const { error } = await sb.auth.updateUser({ password: pwd1 });
+  if (error) { S.error = error.message; render(); return; }
+  S.successMsg = 'Mot de passe mis à jour ! Vous allez être redirigé…';
+  S.error = null;
+  render();
+  setTimeout(() => { S.page = 'home'; S.successMsg = null; render(); }, 2000);
+}
+
+// ============================================================
 //  HOME
 // ============================================================
 function renderHome() {
@@ -343,11 +410,15 @@ function renderAuth() {
   const isLogin = S.authMode === 'login';
   const isForgot = S.authMode === 'forgot';
   return `<div class="app"><div style="max-width:380px;margin:2rem auto">
-    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.authMode='login';S.error=null;render()">← Retour</button>
+    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.authMode='login';S.error=null;S.successMsg=null;render()">← Retour</button>
     <div class="card">
       <h3 style="margin-bottom:1rem">${isForgot?'Mot de passe oublié':isLogin?'Connexion':'Créer un compte'}</h3>
-      ${S.error?`<div style="padding:8px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:10px;font-size:13px">${S.error}</div>`:''}
-      ${S.successMsg?`<div style="padding:8px 12px;background:var(--green-bg);color:var(--green);border-radius:var(--radius);margin-bottom:10px;font-size:13px">${S.successMsg}</div>`:''}
+      ${S.error?`<div style="padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px;align-items:flex-start">
+        <span style="flex-shrink:0">⚠️</span><span>${S.error}</span>
+      </div>`:''}
+      ${S.successMsg?`<div style="padding:10px 12px;background:var(--green-bg);color:var(--green);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px;align-items:flex-start">
+        <span>✓</span><span>${S.successMsg}</span>
+      </div>`:''}
 
       ${isForgot ? `
         <div class="fg" style="margin-bottom:1rem"><label>Email</label>
@@ -360,23 +431,40 @@ function renderAuth() {
       ` : `
         ${!isLogin?`<div class="fg" style="margin-bottom:8px"><label>Nom d'utilisateur</label><input id="auth-username" placeholder="MonPseudo"/></div>`:''}
         <div class="fg" style="margin-bottom:8px"><label>Email</label>
-          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitAuth()"/>
+          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitAuth()"
+            style="border-color:${S.error&&S.error.includes('email')?'var(--red)':''}"/>
         </div>
-        <div class="fg" style="margin-bottom:${isLogin?'6px':'1rem'}"><label>Mot de passe</label>
-          <input type="password" id="auth-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAuth()"/>
+        <div class="fg" style="margin-bottom:6px"><label>Mot de passe</label>
+          <div style="position:relative">
+            <input type="password" id="auth-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAuth()"
+              style="padding-right:44px;border-color:${S.error&&S.error.includes('mot de passe')?'var(--red)':''}"/>
+            <button onclick="togglePwd()" type="button"
+              style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;padding:0;line-height:1"
+              id="pwd-toggle">👁</button>
+          </div>
         </div>
+        ${!isLogin?`<div style="font-size:12px;color:var(--text2);margin-bottom:1rem">Min. 6 caractères</div>`:''}
         ${isLogin?`<div style="text-align:right;margin-bottom:1rem">
           <a href="#" onclick="S.authMode='forgot';S.error=null;S.successMsg=null;render();return false" style="font-size:12px;color:var(--text2)">Mot de passe oublié ?</a>
-        </div>`:''}
+        </div>`:'<div style="margin-bottom:1rem"></div>'}
         <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">${isLogin?'Se connecter':'Créer le compte'}</button>
         <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
           ${isLogin
-            ? `Pas de compte ? <a href="#" onclick="S.authMode='signup';S.error=null;render();return false" style="color:var(--blue)">S'inscrire</a>`
-            : `Déjà un compte ? <a href="#" onclick="S.authMode='login';S.error=null;render();return false" style="color:var(--blue)">Se connecter</a>`}
+            ? `Pas de compte ? <a href="#" onclick="S.authMode='signup';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">S'inscrire</a>`
+            : `Déjà un compte ? <a href="#" onclick="S.authMode='login';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">Se connecter</a>`}
         </div>
       `}
     </div>
   </div></div>`;
+}
+
+function togglePwd() {
+  const input = document.getElementById('auth-pwd');
+  const btn   = document.getElementById('pwd-toggle');
+  if (!input) return;
+  if (input.type === 'password') { input.type = 'text';     btn.textContent = '🙈'; }
+  else                           { input.type = 'password'; btn.textContent = '👁';  }
+  input.focus();
 }
 
 // ============================================================
@@ -957,23 +1045,45 @@ async function goTournament(slug){
 async function submitAuth(){
   const email=document.getElementById('auth-email')?.value.trim();
   const pwd=document.getElementById('auth-pwd')?.value;
-  if(!email||!pwd){S.error='Email et mot de passe requis';render();return;}
+  if(!email){S.error='Veuillez entrer votre email';render();return;}
+  if(!pwd){S.error='Veuillez entrer votre mot de passe';render();return;}
+  if(pwd.length<6){S.error='Le mot de passe doit faire au moins 6 caractères';render();return;}
   S.error=null;S.successMsg=null;
   if(S.authMode==='signup'){
     const {error}=await sb.auth.signUp({email,password:pwd});
-    if(error){S.error=error.message;render();return;}
-    // Tenter connexion directe (fonctionne si confirmation désactivée)
+    if(error){
+      if(error.message.includes('already registered')||error.message.includes('already been registered'))
+        S.error='Cet email est déjà utilisé — connectez-vous ou réinitialisez votre mot de passe.';
+      else if(error.message.includes('invalid email')||error.message.includes('valid email'))
+        S.error='Adresse email invalide.';
+      else if(error.message.includes('Password'))
+        S.error='Mot de passe trop faible — utilisez au moins 6 caractères.';
+      else
+        S.error=error.message;
+      render();return;
+    }
+    // Connexion directe si confirmation désactivée
     const {error:loginErr}=await sb.auth.signInWithPassword({email,password:pwd});
     if(loginErr){
       S.authMode='login';
-      S.successMsg='Compte créé ! Vous pouvez vous connecter.';
+      S.successMsg='Compte créé ! Vous pouvez maintenant vous connecter.';
       render();
     } else {
-      S.page='home';render();
+      S.page='home';S.error=null;S.successMsg=null;render();
     }
   } else {
     const {error}=await sb.auth.signInWithPassword({email,password:pwd});
-    if(error){S.error='Email ou mot de passe incorrect';render();return;}
+    if(error){
+      if(error.message.includes('Invalid login')||error.message.includes('invalid credentials'))
+        S.error='Email ou mot de passe incorrect. Vérifiez vos identifiants.';
+      else if(error.message.includes('Email not confirmed'))
+        S.error='Email non confirmé — vérifiez votre boîte mail ou utilisez "Mot de passe oublié".';
+      else if(error.message.includes('Too many'))
+        S.error='Trop de tentatives. Attendez quelques minutes avant de réessayer.';
+      else
+        S.error=error.message;
+      render();return;
+    }
     S.page='home';S.error=null;S.successMsg=null;render();
   }
 }
@@ -982,7 +1092,7 @@ async function submitForgot(){
   const email=document.getElementById('auth-email')?.value.trim();
   if(!email){S.error='Entrez votre email';render();return;}
   S.error=null;
-  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/reset-password`});
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}`});
   if(error){S.error=error.message;render();return;}
   S.successMsg='Email envoyé ! Vérifiez votre boîte mail.';
   S.error=null;render();
