@@ -22,46 +22,73 @@
   --amber: #633806;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1c1a;
-    --bg2: #252523;
-    --bg3: #2e2e2b;
-    --text: #f0f0eb;
-    --text2: #9e9e98;
-    --text3: #6b6b66;
-    --border: rgba(255,255,255,0.10);
-    --border2: rgba(255,255,255,0.20);
-    --green-bg: #0a3028;
-    --green: #5DCAA5;
-    --red-bg: #3a1a10;
-    --red: #F0997B;
-    --blue-bg: #0c2a45;
-    --blue: #85B7EB;
-    --amber-bg: #3a2510;
-    --amber: #EF9F27;
-  }
-}
+/* Pas de dark mode — on force toujours le thème clair pour l'appli tennis */
 
-/* ---- SVG Background ---- */
+/* ---- Body & Background ---- */
+html { background: #ffffff; }
+
 body {
   font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  color: var(--text);
+  color: #1a1a18;
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
-  background-color: var(--bg);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='680' height='800' viewBox='0 0 680 800'%3E%3Cdefs%3E%3Cfilter id='rough' x='-5%25' y='-5%25' width='110%25' height='110%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.065' numOctaves='3' seed='8' result='noise'/%3E%3CfeDisplacementMap in='SourceGraphic' in2='noise' scale='2.8' xChannelSelector='R' yChannelSelector='G'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='680' height='800' fill='%23ffffff'/%3E%3Cpath d='M 0 0 L 115 0 Q 122 100 108 200 Q 96 350 120 500 Q 138 620 110 800 L 0 800 Z' fill='%232D6A1F'/%3E%3Cpath d='M 680 0 L 565 0 Q 558 100 572 200 Q 584 350 560 500 Q 542 620 570 800 L 680 800 Z' fill='%232D6A1F'/%3E%3Cline x1='0' y1='0' x2='0' y2='800' stroke='%233A7A26' stroke-width='9' opacity='0.35'/%3E%3Cline x1='22' y1='0' x2='20' y2='800' stroke='%23247018' stroke-width='6' opacity='0.25'/%3E%3Cline x1='48' y1='0' x2='50' y2='800' stroke='%233A7A26' stroke-width='5' opacity='0.2'/%3E%3Cline x1='74' y1='0' x2='72' y2='800' stroke='%23247018' stroke-width='4' opacity='0.18'/%3E%3Cline x1='96' y1='0' x2='98' y2='800' stroke='%233A7A26' stroke-width='3' opacity='0.15'/%3E%3Cline x1='680' y1='0' x2='680' y2='800' stroke='%233A7A26' stroke-width='9' opacity='0.35'/%3E%3Cline x1='658' y1='0' x2='660' y2='800' stroke='%23247018' stroke-width='6' opacity='0.25'/%3E%3Cline x1='632' y1='0' x2='630' y2='800' stroke='%233A7A26' stroke-width='5' opacity='0.2'/%3E%3Cline x1='606' y1='0' x2='608' y2='800' stroke='%23247018' stroke-width='4' opacity='0.18'/%3E%3Cline x1='584' y1='0' x2='582' y2='800' stroke='%233A7A26' stroke-width='3' opacity='0.15'/%3E%3Cpath d='M 114 0 Q 122 100 108 200 Q 96 350 120 500 Q 138 620 110 800' fill='none' stroke='%23E8640A' stroke-width='5.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.95'/%3E%3Cpath d='M 116 0 Q 124 95 110 198 Q 98 346 122 498 Q 140 618 112 800' fill='none' stroke='%23E8640A' stroke-width='2.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.5'/%3E%3Cpath d='M 112 0 Q 120 105 106 202 Q 94 354 118 502 Q 136 622 108 800' fill='none' stroke='%23F07820' stroke-width='1.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.35'/%3E%3Cpath d='M 566 0 Q 558 100 572 200 Q 584 350 560 500 Q 542 620 570 800' fill='none' stroke='%23E8640A' stroke-width='5.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.95'/%3E%3Cpath d='M 564 0 Q 556 96 570 202 Q 582 348 558 502 Q 540 622 568 800' fill='none' stroke='%23E8640A' stroke-width='2.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.5'/%3E%3Cpath d='M 568 0 Q 560 104 574 198 Q 586 352 562 498 Q 544 618 572 800' fill='none' stroke='%23F07820' stroke-width='1.5' stroke-linecap='round' filter='url(%23rough)' opacity='0.35'/%3E%3Ccircle cx='622' cy='110' r='30' fill='%23C8D62A'/%3E%3Ccircle cx='622' cy='110' r='30' fill='none' stroke='%23B0BE1A' stroke-width='1.5'/%3E%3Cpath d='M 596 97 Q 622 118 648 97' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 596 123 Q 622 102 648 123' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cellipse cx='610' cy='97' rx='9' ry='5' fill='%23DCF040' opacity='0.5'/%3E%3Ccircle cx='52' cy='490' r='27' fill='%23C8D62A'/%3E%3Ccircle cx='52' cy='490' r='27' fill='none' stroke='%23B0BE1A' stroke-width='1.5'/%3E%3Cpath d='M 28 478 Q 52 498 76 478' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 28 502 Q 52 482 76 502' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cellipse cx='41' cy='479' rx='8' ry='4' fill='%23DCF040' opacity='0.5'/%3E%3C/svg%3E");
-  background-repeat: repeat-y;
-  background-size: 100% auto;
-  background-attachment: fixed;
+  background-color: #ffffff;
+  position: relative;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='680' height='800' viewBox='0 0 680 800'%3E%3Crect width='680' height='800' fill='%231c1c1a'/%3E%3Cpath d='M 0 0 L 115 0 Q 122 100 108 200 Q 96 350 120 500 Q 138 620 110 800 L 0 800 Z' fill='%231a4010'/%3E%3Cpath d='M 680 0 L 565 0 Q 558 100 572 200 Q 584 350 560 500 Q 542 620 570 800 L 680 800 Z' fill='%231a4010'/%3E%3Cline x1='0' y1='0' x2='0' y2='800' stroke='%23246018' stroke-width='9' opacity='0.35'/%3E%3Cline x1='22' y1='0' x2='20' y2='800' stroke='%231a4010' stroke-width='6' opacity='0.25'/%3E%3Cline x1='48' y1='0' x2='50' y2='800' stroke='%23246018' stroke-width='5' opacity='0.2'/%3E%3Cline x1='74' y1='0' x2='72' y2='800' stroke='%231a4010' stroke-width='4' opacity='0.18'/%3E%3Cline x1='680' y1='0' x2='680' y2='800' stroke='%23246018' stroke-width='9' opacity='0.35'/%3E%3Cline x1='658' y1='0' x2='660' y2='800' stroke='%231a4010' stroke-width='6' opacity='0.25'/%3E%3Cline x1='632' y1='0' x2='630' y2='800' stroke='%23246018' stroke-width='5' opacity='0.2'/%3E%3Cline x1='606' y1='0' x2='608' y2='800' stroke='%231a4010' stroke-width='4' opacity='0.18'/%3E%3Cpath d='M 114 0 Q 122 100 108 200 Q 96 350 120 500 Q 138 620 110 800' fill='none' stroke='%23E8640A' stroke-width='5.5' stroke-linecap='round' opacity='0.9'/%3E%3Cpath d='M 116 0 Q 124 95 110 198 Q 98 346 122 498 Q 140 618 112 800' fill='none' stroke='%23E8640A' stroke-width='2.5' stroke-linecap='round' opacity='0.45'/%3E%3Cpath d='M 566 0 Q 558 100 572 200 Q 584 350 560 500 Q 542 620 570 800' fill='none' stroke='%23E8640A' stroke-width='5.5' stroke-linecap='round' opacity='0.9'/%3E%3Cpath d='M 564 0 Q 556 96 570 202 Q 582 348 558 502 Q 540 622 568 800' fill='none' stroke='%23E8640A' stroke-width='2.5' stroke-linecap='round' opacity='0.45'/%3E%3Ccircle cx='622' cy='110' r='30' fill='%23C8D62A'/%3E%3Cpath d='M 596 97 Q 622 118 648 97' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 596 123 Q 622 102 648 123' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='52' cy='490' r='27' fill='%23C8D62A'/%3E%3Cpath d='M 28 478 Q 52 498 76 478' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M 28 502 Q 52 482 76 502' fill='none' stroke='%238FA010' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  }
+/* Bandes vertes fixes sur les côtés via pseudo-éléments */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  z-index: 0;
+  pointer-events: none;
 }
+
+body::before {
+  left: 0;
+  background: #2D6A1F;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 12px) 12%, calc(100% - 4px) 25%, calc(100% - 14px) 44%, calc(100% - 2px) 62%, calc(100% - 16px) 78%, calc(100% - 6px) 100%, 0 100%);
+}
+
+body::after {
+  right: 0;
+  background: #2D6A1F;
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 6px 100%, 16px 78%, 2px 62%, 14px 44%, 4px 25%, 12px 12%);
+}
+
+/* Lignes de texture herbe */
+body::before {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 18px,
+    rgba(255,255,255,0.06) 18px,
+    rgba(255,255,255,0.06) 20px
+  );
+  background-color: #2D6A1F;
+}
+
+/* Ligne orange gauche */
+#bg-left, #bg-right {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 1;
+  pointer-events: none;
+  background: #E8640A;
+  border-radius: 3px;
+}
+#bg-left  { left: 112px; clip-path: path('M 0 0 Q 8 150 -2 300 Q -10 450 4 600 Q 14 750 0 900'); }
+#bg-right { right: 112px; clip-path: path('M 6 0 Q -2 150 8 300 Q 16 450 2 600 Q -8 750 6 900'); }
+
+/* Contenu au dessus du fond */
+#root { position: relative; z-index: 2; }
 
 /* ---- App container ---- */
 .app {
