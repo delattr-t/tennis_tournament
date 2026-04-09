@@ -79,14 +79,12 @@ async function boot() {
 
   sb.auth.onAuthStateChange(async (event, session) => {
     S.user = session?.user || null;
-    // Supabase envoie PASSWORD_RECOVERY quand l'utilisateur clique le lien email
-    if (event === 'PASSWORD_RECOVERY') {
-      S.page = 'reset-password';
-      S.loading = false;
-      render();
-      return;
+    if (S.user) {
+      await loadProfile();
+      if (S.page === 'auth') { S.page = 'home'; S.successMsg = null; }
+    } else {
+      S.profile = null; S.myTournaments = [];
     }
-    if (S.user) await loadProfile(); else { S.profile = null; S.myTournaments = []; }
     render();
   });
 }
@@ -159,7 +157,6 @@ function render() {
 }
 
 function renderPage() {
-  if (S.page === 'reset-password') return renderResetPassword();
   if (S.page === 'install')        return renderInstallPage();
   if (S.page === 'auth')           return renderAuth();
   if (S.page === 'create')         return renderCreate();
@@ -337,8 +334,7 @@ function renderHome() {
         ${S.user
           ? `<span style="font-size:13px;color:var(--text2)">${S.profile?.username||S.user.email}</span>
              <button class="btn" onclick="signOut()">Déconnexion</button>`
-          : `<button class="btn" onclick="goAuth('login')">Connexion</button>
-             <button class="btn btn-primary" onclick="goAuth('signup')">Créer un compte</button>`}
+          : `<button class="btn btn-primary" onclick="goAuth()">Se connecter</button>`}
       </div>
     </div>
 
@@ -365,11 +361,10 @@ function renderLanding() {
       Créez un tournoi, partagez le lien dans WhatsApp.<br>
       Vos amis s'inscrivent en un clic et reçoivent des notifications pour leurs matchs.
     </p>
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="goAuth('signup')">Créer un compte gratuit</button>
-      <button class="btn" onclick="goAuth('login')">Se connecter</button>
-    </div>
-    <p style="font-size:12px;color:var(--text2);margin-top:1.5rem">100% gratuit · PWA installable · Notifications push & email</p>
+    <button class="btn btn-primary" style="padding:10px 28px;font-size:15px" onclick="goAuth()">
+      Commencer — c'est gratuit
+    </button>
+    <p style="font-size:12px;color:var(--text2);margin-top:1rem">Connexion sans mot de passe · PWA installable · Notifications</p>
   </div>`;
 }
 
@@ -404,67 +399,45 @@ function renderMyTournaments() {
 }
 
 // ============================================================
-//  AUTH
+//  AUTH — Magic Link (sans mot de passe)
 // ============================================================
 function renderAuth() {
-  const isLogin = S.authMode === 'login';
-  const isForgot = S.authMode === 'forgot';
   return `<div class="app"><div style="max-width:380px;margin:2rem auto">
-    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.authMode='login';S.error=null;S.successMsg=null;render()">← Retour</button>
+    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.error=null;S.successMsg=null;render()">← Retour</button>
     <div class="card">
-      <h3 style="margin-bottom:1rem">${isForgot?'Mot de passe oublié':isLogin?'Connexion':'Créer un compte'}</h3>
-      ${S.error?`<div style="padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px;align-items:flex-start">
-        <span style="flex-shrink:0">⚠️</span><span>${S.error}</span>
-      </div>`:''}
-      ${S.successMsg?`<div style="padding:10px 12px;background:var(--green-bg);color:var(--green);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px;align-items:flex-start">
-        <span>✓</span><span>${S.successMsg}</span>
-      </div>`:''}
-
-      ${isForgot ? `
-        <div class="fg" style="margin-bottom:1rem"><label>Email</label>
-          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitForgot()"/>
+      ${!S.successMsg ? `
+        <div style="text-align:center;margin-bottom:1.25rem">
+          <div style="font-size:36px;margin-bottom:8px">🔗</div>
+          <h3 style="margin-bottom:4px">Connexion sans mot de passe</h3>
+          <p style="font-size:13px;color:var(--text2)">Entrez votre email — on vous envoie un lien magique pour vous connecter instantanément.</p>
         </div>
-        <button class="btn btn-primary" style="width:100%" onclick="submitForgot()">Envoyer le lien de réinitialisation</button>
-        <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
-          <a href="#" onclick="S.authMode='login';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">← Retour à la connexion</a>
+        ${S.error?`<div style="padding:10px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:12px;font-size:13px;display:flex;gap:8px">
+          <span>⚠️</span><span>${S.error}</span>
+        </div>`:''}
+        <div class="fg" style="margin-bottom:1rem">
+          <label>Votre email</label>
+          <input type="email" id="auth-email" placeholder="email@exemple.com"
+            onkeydown="if(event.key==='Enter')submitMagicLink()" autofocus/>
         </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="submitMagicLink()">
+          Recevoir le lien de connexion
+        </button>
+        <p style="text-align:center;font-size:12px;color:var(--text2);margin-top:12px">
+          Première fois ? Un compte est créé automatiquement.
+        </p>
       ` : `
-        ${!isLogin?`<div class="fg" style="margin-bottom:8px"><label>Nom d'utilisateur</label><input id="auth-username" placeholder="MonPseudo"/></div>`:''}
-        <div class="fg" style="margin-bottom:8px"><label>Email</label>
-          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitAuth()"
-            style="border-color:${S.error&&S.error.includes('email')?'var(--red)':''}"/>
-        </div>
-        <div class="fg" style="margin-bottom:6px"><label>Mot de passe</label>
-          <div style="position:relative">
-            <input type="password" id="auth-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAuth()"
-              style="padding-right:44px;border-color:${S.error&&S.error.includes('mot de passe')?'var(--red)':''}"/>
-            <button onclick="togglePwd()" type="button"
-              style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text2);font-size:16px;padding:0;line-height:1"
-              id="pwd-toggle">👁</button>
-          </div>
-        </div>
-        ${!isLogin?`<div style="font-size:12px;color:var(--text2);margin-bottom:1rem">Min. 6 caractères</div>`:''}
-        ${isLogin?`<div style="text-align:right;margin-bottom:1rem">
-          <a href="#" onclick="S.authMode='forgot';S.error=null;S.successMsg=null;render();return false" style="font-size:12px;color:var(--text2)">Mot de passe oublié ?</a>
-        </div>`:'<div style="margin-bottom:1rem"></div>'}
-        <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">${isLogin?'Se connecter':'Créer le compte'}</button>
-        <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
-          ${isLogin
-            ? `Pas de compte ? <a href="#" onclick="S.authMode='signup';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">S'inscrire</a>`
-            : `Déjà un compte ? <a href="#" onclick="S.authMode='login';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">Se connecter</a>`}
+        <div style="text-align:center;padding:1rem 0">
+          <div style="font-size:48px;margin-bottom:12px">📬</div>
+          <h3 style="margin-bottom:8px">Vérifiez votre email !</h3>
+          <p style="font-size:14px;color:var(--text2);line-height:1.6">${S.successMsg}</p>
+          <p style="font-size:12px;color:var(--text3);margin-top:12px">Le lien est valable 1 heure.</p>
+          <button class="btn" style="margin-top:1.25rem" onclick="S.successMsg=null;S.error=null;render()">
+            ← Changer d'email
+          </button>
         </div>
       `}
     </div>
   </div></div>`;
-}
-
-function togglePwd() {
-  const input = document.getElementById('auth-pwd');
-  const btn   = document.getElementById('pwd-toggle');
-  if (!input) return;
-  if (input.type === 'password') { input.type = 'text';     btn.textContent = '🙈'; }
-  else                           { input.type = 'password'; btn.textContent = '👁';  }
-  input.focus();
 }
 
 // ============================================================
@@ -1033,7 +1006,7 @@ async function notifyMatchPlayers(type, matchId) {
 // ============================================================
 //  ACTIONS — AUTH
 // ============================================================
-function goAuth(mode){S.authMode=mode;S.page='auth';S.error=null;render();}
+function goAuth(){S.page='auth';S.error=null;S.successMsg=null;render();}
 function goHome(){S.tournament=null;S.page='home';S.error=null;history.pushState({},'','/');loadMyTournaments().then(render);}
 async function goTournament(slug){
   history.pushState({},'','/'+slug);
@@ -1042,60 +1015,24 @@ async function goTournament(slug){
   S.loading=false;render();
 }
 
-async function submitAuth(){
+async function submitMagicLink(){
   const email=document.getElementById('auth-email')?.value.trim();
-  const pwd=document.getElementById('auth-pwd')?.value;
   if(!email){S.error='Veuillez entrer votre email';render();return;}
-  if(!pwd){S.error='Veuillez entrer votre mot de passe';render();return;}
-  if(pwd.length<6){S.error='Le mot de passe doit faire au moins 6 caractères';render();return;}
-  S.error=null;S.successMsg=null;
-  if(S.authMode==='signup'){
-    const {error}=await sb.auth.signUp({email,password:pwd});
-    if(error){
-      if(error.message.includes('already registered')||error.message.includes('already been registered'))
-        S.error='Cet email est déjà utilisé — connectez-vous ou réinitialisez votre mot de passe.';
-      else if(error.message.includes('invalid email')||error.message.includes('valid email'))
-        S.error='Adresse email invalide.';
-      else if(error.message.includes('Password'))
-        S.error='Mot de passe trop faible — utilisez au moins 6 caractères.';
-      else
-        S.error=error.message;
-      render();return;
-    }
-    // Connexion directe si confirmation désactivée
-    const {error:loginErr}=await sb.auth.signInWithPassword({email,password:pwd});
-    if(loginErr){
-      S.authMode='login';
-      S.successMsg='Compte créé ! Vous pouvez maintenant vous connecter.';
-      render();
-    } else {
-      S.page='home';S.error=null;S.successMsg=null;render();
-    }
-  } else {
-    const {error}=await sb.auth.signInWithPassword({email,password:pwd});
-    if(error){
-      if(error.message.includes('Invalid login')||error.message.includes('invalid credentials'))
-        S.error='Email ou mot de passe incorrect. Vérifiez vos identifiants.';
-      else if(error.message.includes('Email not confirmed'))
-        S.error='Email non confirmé — vérifiez votre boîte mail ou utilisez "Mot de passe oublié".';
-      else if(error.message.includes('Too many'))
-        S.error='Trop de tentatives. Attendez quelques minutes avant de réessayer.';
-      else
-        S.error=error.message;
-      render();return;
-    }
-    S.page='home';S.error=null;S.successMsg=null;render();
-  }
-}
-
-async function submitForgot(){
-  const email=document.getElementById('auth-email')?.value.trim();
-  if(!email){S.error='Entrez votre email';render();return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){S.error='Adresse email invalide';render();return;}
   S.error=null;
-  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}`});
-  if(error){S.error=error.message;render();return;}
-  S.successMsg='Email envoyé ! Vérifiez votre boîte mail.';
-  S.error=null;render();
+  const {error}=await sb.auth.signInWithOtp({
+    email,
+    options:{ emailRedirectTo: window.location.origin }
+  });
+  if(error){
+    if(error.message.includes('Too many'))
+      S.error='Trop de tentatives. Attendez quelques minutes avant de réessayer.';
+    else
+      S.error=error.message;
+    render();return;
+  }
+  S.successMsg=`Un lien de connexion a été envoyé à <strong>${email}</strong>. Cliquez dessus pour vous connecter.`;
+  render();
 }
 
 async function signOut(){await sb.auth.signOut();S.user=null;S.profile=null;S.myTournaments=[];S.page='home';render();}
