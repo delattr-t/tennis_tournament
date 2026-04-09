@@ -48,6 +48,13 @@ let S = {
 async function boot() {
   S.loading = true; render();
 
+  // Magic link — Supabase insère le token dans le hash #access_token=...
+  // getSession() le détecte et crée la session automatiquement
+  if (window.location.hash.includes('access_token') || window.location.hash.includes('type=magiclink') || window.location.hash.includes('type=recovery')) {
+    await sb.auth.getSession();
+    history.replaceState(null, '', window.location.pathname);
+  }
+
   // Auth
   const { data: { session } } = await sb.auth.getSession();
   if (session) { S.user = session.user; await loadProfile(); }
