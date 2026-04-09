@@ -3,7 +3,7 @@
 //  Gère : cache offline + notifications push
 // ============================================================
 
-const CACHE_NAME = 'tennis-v1';
+const CACHE_NAME = 'tennis-v2';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
 
 // ---- INSTALL : mise en cache des assets ----
