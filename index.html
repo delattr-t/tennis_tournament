@@ -7,17 +7,17 @@
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#1a1a18" />
+  <meta name="theme-color" content="#2D6A1F" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Tennis" />
 
   <!-- Icons -->
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
-  <!-- Open Graph (partage WhatsApp/réseaux) -->
+  <!-- Open Graph -->
   <meta property="og:title" content="Tournoi de Tennis" />
   <meta property="og:description" content="Rejoignez le tournoi et suivez le tableau en direct !" />
   <meta property="og:image" content="/icons/icon-512.png" />
@@ -28,66 +28,28 @@
 <body>
   <div id="root"></div>
 
-  <!-- Bande verte gauche fixe -->
-  <div style="position:fixed;top:0;left:0;width:90px;height:100vh;background:#2D6A1F;z-index:0;pointer-events:none;"></div>
-  <!-- Bande verte droite fixe -->
-  <div style="position:fixed;top:0;right:0;width:90px;height:100vh;background:#2D6A1F;z-index:0;pointer-events:none;"></div>
-
-  <!-- Ligne orange gauche -->
-  <svg style="position:fixed;top:0;left:0;width:100px;height:100vh;z-index:1;pointer-events:none;overflow:visible" preserveAspectRatio="none" viewBox="0 0 100 800" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 88 0 Q 96 130 82 280 Q 70 430 94 580 Q 108 700 84 800" fill="none" stroke="#E8640A" stroke-width="5" stroke-linecap="round" opacity="0.95"/>
-    <path d="M 90 0 Q 98 128 84 278 Q 72 428 96 578 Q 110 698 86 800" fill="none" stroke="#E8640A" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
-    <!-- Balle haut gauche -->
-    <circle cx="44" cy="120" r="26" fill="#C8D62A"/>
-    <path d="M 22 109 Q 44 127 66 109" fill="none" stroke="#8FA010" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 22 131 Q 44 113 66 131" fill="none" stroke="#8FA010" stroke-width="2.5" stroke-linecap="round"/>
-    <ellipse cx="33" cy="109" rx="7" ry="4" fill="#DCF040" opacity="0.5"/>
-  </svg>
-
-  <!-- Ligne orange droite -->
-  <svg style="position:fixed;top:0;right:0;width:100px;height:100vh;z-index:1;pointer-events:none;overflow:visible" preserveAspectRatio="none" viewBox="0 0 100 800" xmlns="http://www.w3.org/2000/svg">
-    <path d="M 12 0 Q 4 130 18 280 Q 30 430 6 580 Q -8 700 16 800" fill="none" stroke="#E8640A" stroke-width="5" stroke-linecap="round" opacity="0.95"/>
-    <path d="M 10 0 Q 2 128 16 278 Q 28 428 4 578 Q -10 698 14 800" fill="none" stroke="#E8640A" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
-    <!-- Balle milieu bas droite -->
-    <circle cx="56" cy="490" r="26" fill="#C8D62A"/>
-    <path d="M 34 479 Q 56 497 78 479" fill="none" stroke="#8FA010" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 34 501 Q 56 483 78 501" fill="none" stroke="#8FA010" stroke-width="2.5" stroke-linecap="round"/>
-    <ellipse cx="45" cy="479" rx="7" ry="4" fill="#DCF040" opacity="0.5"/>
-  </svg>
-
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- App -->
   <script src="/app.js"></script>
 
-  <!-- Service Worker + PWA install -->
   <script>
-    // ---- Service Worker ----
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(reg => {
-            console.log('SW registered:', reg.scope);
-            window._swRegistration = reg;
-          })
+          .then(reg => { window._swRegistration = reg; })
           .catch(err => console.warn('SW error:', err));
       });
     }
-
-    // ---- PWA Install Prompt ----
     let _deferredInstallPrompt = null;
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       _deferredInstallPrompt = e;
       window.dispatchEvent(new CustomEvent('pwa-installable'));
     });
-
     window.addEventListener('appinstalled', () => {
       _deferredInstallPrompt = null;
       window.dispatchEvent(new CustomEvent('pwa-installed'));
     });
-
-    // Expose globally
     window.triggerInstallPrompt = async () => {
       if (!_deferredInstallPrompt) return false;
       _deferredInstallPrompt.prompt();
@@ -95,14 +57,9 @@
       _deferredInstallPrompt = null;
       return outcome === 'accepted';
     };
-
-    window.canInstallPWA = () => !!_deferredInstallPrompt;
-
-    window.isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-    window.isStandalone = () =>
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true;
+    window.canInstallPWA  = () => !!_deferredInstallPrompt;
+    window.isIOS          = () => /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    window.isStandalone   = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   </script>
 </body>
 </html>
