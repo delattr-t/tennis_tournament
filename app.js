@@ -1,45 +1,88 @@
 // ============================================================
-//  Tennis Tournament — app.js avec Supabase
+//  Tennis Tournament — app.js
+//  PWA + Supabase + Push Notifications + Email
 // ============================================================
 
-const SUPABASE_URL  = 'https://irftqzegmgcjqpivuwhr.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyZnRxemVnbWdjanFwaXZ1d2hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyOTU0NjAsImV4cCI6MjA4OTg3MTQ2MH0.6YPrGR6eTVxtLzUasMKcepS7zgRD7B5tK-L4CtkIhGs';
+const SUPABASE_URL   = 'https://irftqzegmgcjqpivuwhr.supabase.co';
+const SUPABASE_ANON  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyZnRxemVnbWdjanFwaXZ1d2hyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyOTU0NjAsImV4cCI6MjA4OTg3MTQ2MH0.6YPrGR6eTVxtLzUasMKcepS7zgRD7B5tK-L4CtkIhGs';
+const VAPID_PUBLIC   = 'BOU89Qx4UolYpcmd7dwfuXUY9ESzBtjCoR0tXbAVIDaaI4jIlg7NG4xqQ3e26KpE2ryLSAVeaJDWQxeUPVnrgQA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-// ---- AVATAR COLORS ----
-const AVATAR_COLORS = [
-  { bg: '#E6F1FB', txt: '#0C447C' }, { bg: '#EAF3DE', txt: '#27500A' },
-  { bg: '#EEEDFE', txt: '#3C3489' }, { bg: '#FAEEDA', txt: '#633806' },
-  { bg: '#E1F5EE', txt: '#085041' }, { bg: '#FBEAF0', txt: '#72243E' },
-  { bg: '#FAECE7', txt: '#712B13' }, { bg: '#F1EFE8', txt: '#444441' },
+// ---- COLORS ----
+const AC = [
+  {bg:'#E6F1FB',txt:'#0C447C'},{bg:'#EAF3DE',txt:'#27500A'},
+  {bg:'#EEEDFE',txt:'#3C3489'},{bg:'#FAEEDA',txt:'#633806'},
+  {bg:'#E1F5EE',txt:'#085041'},{bg:'#FBEAF0',txt:'#72243E'},
+  {bg:'#FAECE7',txt:'#712B13'},{bg:'#F1EFE8',txt:'#444441'},
 ];
-function ac(i)  { return AVATAR_COLORS[i % AVATAR_COLORS.length]; }
-function ini(n) { return (n||'?').trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2)||'?'; }
-function newSlug() { return Math.random().toString(36).slice(2,8); }
+const ac  = i => AC[i % AC.length];
+const ini = n => (n||'?').trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2)||'?';
+const nsl = () => Math.random().toString(36).slice(2,8);
 
 // ============================================================
 //  STATE
 // ============================================================
 let S = {
-  page: 'home',
+  page: 'home',         // home | auth | create | tournament | install
   authMode: 'login',
-  user: null,
-  profile: null,
+  user: null, profile: null,
   myTournaments: [],
   tournament: null,
-  players: [],
-  teams: [],
-  pools: [],
-  poolMatches: [],
-  bracketMatches: [],
-  adminTab: 'setup',
-  pubTab: 'register',
-  myPlayerId: null,
-  currentModal: null,
-  loading: false,
-  error: null,
+  players: [], teams: [], pools: [], poolMatches: [], bracketMatches: [],
+  adminTab: 'setup', pubTab: 'register',
+  myPlayerId: null, currentModal: null,
+  loading: false, error: null,
   shareToast: false,
+  // PWA
+  pwaInstallable: false,
+  pwaInstalled: false,
+  // Notification permission
+  notifPermission: 'default',
+  // Install page context (slug en attente)
+  pendingSlug: null,
 };
+
+// ============================================================
+//  BOOT
+// ============================================================
+async function boot() {
+  S.loading = true; render();
+
+  // Auth
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) { S.user = session.user; await loadProfile(); }
+
+  // PWA state
+  S.notifPermission = 'Notification' in window ? Notification.permission : 'denied';
+  S.pwaInstalled = window.isStandalone?.() || false;
+
+  window.addEventListener('pwa-installable', () => { S.pwaInstallable = true; render(); });
+  window.addEventListener('pwa-installed',   () => { S.pwaInstalled = true; S.pwaInstallable = false; render(); });
+
+  // Routing
+  const slug = getSlugFromURL();
+  if (slug) {
+    const t = await fetchTournamentBySlug(slug);
+    if (t) {
+      // Si on arrive via un lien partagé → page d'install d'abord
+      if (!window.isStandalone?.()) {
+        S.pendingSlug = slug;
+        S.tournament = t;
+        S.page = 'install';
+      } else {
+        await loadTournamentBySlug(slug);
+      }
+    }
+  }
+
+  S.loading = false; render();
+
+  sb.auth.onAuthStateChange(async (_, session) => {
+    S.user = session?.user || null;
+    if (S.user) await loadProfile(); else { S.profile = null; S.myTournaments = []; }
+    render();
+  });
+}
 
 // ============================================================
 //  ROUTING
@@ -49,24 +92,35 @@ function getSlugFromURL() {
   return (p && p !== 'index.html') ? p : null;
 }
 
-async function boot() {
-  S.loading = true; render();
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) { S.user = session.user; await loadProfile(); }
-  const urlSlug = getSlugFromURL();
-  if (urlSlug) await loadTournamentBySlug(urlSlug);
-  else S.page = 'home';
-  S.loading = false; render();
-  sb.auth.onAuthStateChange(async (event, session) => {
-    S.user = session?.user || null;
-    if (S.user) await loadProfile(); else { S.profile = null; S.myTournaments = []; }
-    render();
-  });
+async function fetchTournamentBySlug(slug) {
+  const { data } = await sb.from('tournaments').select('*').eq('slug', slug).single();
+  return data || null;
 }
 
-// ============================================================
-//  SUPABASE DATA
-// ============================================================
+async function loadTournamentBySlug(slug) {
+  const t = await fetchTournamentBySlug(slug);
+  if (!t) { S.page = 'home'; return; }
+  S.tournament = t;
+  S.page = 'tournament';
+  S.pubTab = 'register';
+  S.adminTab = 'setup';
+  await loadTournamentData();
+}
+
+async function loadTournamentData() {
+  if (!S.tournament) return;
+  const tid = S.tournament.id;
+  const [pR, tR, poolR, pmR, bmR] = await Promise.all([
+    sb.from('players').select('*').eq('tournament_id', tid).order('created_at'),
+    sb.from('teams').select('*').eq('tournament_id', tid),
+    sb.from('pools').select('*').eq('tournament_id', tid).order('pool_index'),
+    sb.from('pool_matches').select('*').eq('tournament_id', tid),
+    sb.from('bracket_matches').select('*').eq('tournament_id', tid).order('round').order('position'),
+  ]);
+  S.players = pR.data||[]; S.teams = tR.data||[]; S.pools = poolR.data||[];
+  S.poolMatches = pmR.data||[]; S.bracketMatches = bmR.data||[];
+}
+
 async function loadProfile() {
   const { data } = await sb.from('profiles').select('*').eq('id', S.user.id).single();
   S.profile = data;
@@ -79,33 +133,6 @@ async function loadMyTournaments() {
   S.myTournaments = data || [];
 }
 
-async function loadTournamentBySlug(slug) {
-  const { data: t } = await sb.from('tournaments').select('*').eq('slug', slug).single();
-  if (!t) { S.page = 'home'; return; }
-  S.tournament = t;
-  S.page = 'tournament';
-  S.pubTab = 'register';
-  S.adminTab = 'setup';
-  await loadTournamentData();
-}
-
-async function loadTournamentData() {
-  if (!S.tournament) return;
-  const tid = S.tournament.id;
-  const [pRes, tRes, poolRes, pmRes, bmRes] = await Promise.all([
-    sb.from('players').select('*').eq('tournament_id', tid).order('created_at'),
-    sb.from('teams').select('*').eq('tournament_id', tid),
-    sb.from('pools').select('*').eq('tournament_id', tid).order('pool_index'),
-    sb.from('pool_matches').select('*').eq('tournament_id', tid),
-    sb.from('bracket_matches').select('*').eq('tournament_id', tid).order('round').order('position'),
-  ]);
-  S.players        = pRes.data   || [];
-  S.teams          = tRes.data   || [];
-  S.pools          = poolRes.data|| [];
-  S.poolMatches    = pmRes.data  || [];
-  S.bracketMatches = bmRes.data  || [];
-}
-
 // ============================================================
 //  RENDER
 // ============================================================
@@ -113,25 +140,120 @@ function render() {
   const root = document.getElementById('root');
   if (!root) return;
   if (S.loading) {
-    root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:60vh;color:var(--text2);font-size:14px">Chargement…</div>`;
+    root.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:80vh;flex-direction:column;gap:12px">
+      <div style="font-size:32px">🎾</div>
+      <div style="color:var(--text2);font-size:14px">Chargement…</div>
+    </div>`;
     return;
   }
   root.innerHTML = renderPage();
   if (S.currentModal) renderModal();
-  if (S.shareToast) {
-    const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;white-space:nowrap';
-    t.textContent = 'Lien copié ! Collez-le dans WhatsApp 🎾';
-    document.body.appendChild(t);
-    setTimeout(() => { t.remove(); S.shareToast = false; }, 3000);
-  }
+  if (S.shareToast) showToast('Lien copié ! Collez-le dans WhatsApp 🎾', 3000);
 }
 
 function renderPage() {
+  if (S.page === 'install')    return renderInstallPage();
   if (S.page === 'auth')       return renderAuth();
   if (S.page === 'create')     return renderCreate();
   if (S.page === 'tournament') return renderTournamentPage();
   return renderHome();
+}
+
+function showToast(msg, duration = 3000) {
+  S.shareToast = false;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 20px;border-radius:8px;font-size:13px;z-index:999;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+
+// ============================================================
+//  INSTALL PAGE — affiché quand on arrive via un lien partagé
+// ============================================================
+function renderInstallPage() {
+  const t = S.tournament;
+  const isIOS = window.isIOS?.();
+  const canInstall = window.canInstallPWA?.();
+  const playerCount = S.players.length;
+
+  return `<div class="app" style="max-width:480px;margin:0 auto">
+    <!-- Header tournoi -->
+    <div style="text-align:center;padding:2rem 0 1.5rem">
+      <div style="font-size:48px;margin-bottom:12px">🎾</div>
+      <h1 style="font-size:22px;margin-bottom:6px">${t.name}</h1>
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px">
+        <span class="status s-${t.status}">${statusLabel(t.status)}</span>
+        <span class="badge">${playerCount} joueur${playerCount!==1?'s':''} inscrits</span>
+        <span class="pill ${t.mode==='double'?'pill-double':'pill-simple'}">${t.mode==='double'?'Double':'Simple'}</span>
+      </div>
+      <p style="color:var(--text2);font-size:14px">Vous avez été invité à rejoindre ce tournoi !</p>
+    </div>
+
+    <!-- Option 1 : Installer l'app -->
+    ${!S.pwaInstalled ? `
+    <div class="card" style="margin-bottom:12px;border:2px solid var(--border2)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div style="width:44px;height:44px;background:var(--text);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🎾</div>
+        <div>
+          <div style="font-weight:600;font-size:15px">Installer l'application</div>
+          <div style="font-size:12px;color:var(--text2)">Notifications, accès rapide, fonctionne hors ligne</div>
+        </div>
+      </div>
+      ${canInstall ? `
+        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" onclick="installPWA()">
+          Installer l'app Tennis
+        </button>` : ''}
+      ${isIOS ? `
+        <div style="background:var(--bg2);border-radius:var(--radius);padding:12px;font-size:13px;color:var(--text2)">
+          <div style="font-weight:500;color:var(--text);margin-bottom:6px">Sur iPhone :</div>
+          <div style="margin-bottom:4px">1. Appuyez sur <strong>Partager</strong> <span style="font-size:16px">⎙</span> en bas de Safari</div>
+          <div style="margin-bottom:4px">2. Faites défiler et appuyez sur <strong>"Sur l'écran d'accueil"</strong></div>
+          <div>3. Appuyez sur <strong>Ajouter</strong></div>
+        </div>` : ''}
+      ${!canInstall && !isIOS ? `
+        <div style="font-size:12px;color:var(--text2);text-align:center">
+          Ouvrez ce lien dans Chrome ou Safari pour installer l'app
+        </div>` : ''}
+    </div>` : `
+    <div class="card" style="margin-bottom:12px;background:var(--green-bg);border-color:var(--green)">
+      <div style="color:var(--green);font-weight:500;font-size:14px">✓ Application installée !</div>
+    </div>`}
+
+    <!-- Option 2 : Continuer sur le navigateur -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-weight:500;font-size:14px;margin-bottom:8px">Continuer sur le navigateur</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Pas d'installation nécessaire — accédez directement au tournoi.</div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="continueToTournament()">
+        S'inscrire au tournoi →
+      </button>
+    </div>
+
+    <p style="text-align:center;font-size:12px;color:var(--text2)">
+      Organisé par ${t.owner_id ? '…' : 'un ami'} · 
+      <a href="#" onclick="continueToTournament();return false" style="color:var(--blue)">Voir le tableau</a>
+    </p>
+  </div>`;
+}
+
+async function installPWA() {
+  const accepted = await window.triggerInstallPrompt?.();
+  if (accepted) {
+    S.pwaInstalled = true;
+    showToast('Application installée ! 🎾');
+    setTimeout(() => continueToTournament(), 1000);
+  }
+}
+
+async function continueToTournament() {
+  const slug = S.pendingSlug;
+  S.pendingSlug = null;
+  if (slug) {
+    await loadTournamentData();
+    S.page = 'tournament';
+    S.pubTab = 'register';
+    render();
+  }
 }
 
 // ============================================================
@@ -142,16 +264,28 @@ function renderHome() {
     <div class="app-header">
       <div>
         <h1>🎾 Tournois de tennis</h1>
-        <div style="font-size:13px;color:var(--text2);margin-top:3px">Créez et partagez vos tournois entre amis</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:3px">Créez et partagez vos tournois</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
         ${S.user
-          ? `<span style="font-size:13px;color:var(--text2)">${S.profile?.username || S.user.email}</span>
+          ? `<span style="font-size:13px;color:var(--text2)">${S.profile?.username||S.user.email}</span>
              <button class="btn" onclick="signOut()">Déconnexion</button>`
           : `<button class="btn" onclick="goAuth('login')">Connexion</button>
              <button class="btn btn-primary" onclick="goAuth('signup')">Créer un compte</button>`}
       </div>
     </div>
+
+    <!-- Bannière install PWA sur home -->
+    ${!S.pwaInstalled && (window.canInstallPWA?.() || window.isIOS?.()) ? `
+    <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;gap:12px;padding:.75rem 1rem">
+      <div style="font-size:24px">📱</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">Installer l'app</div>
+        <div style="font-size:12px;color:var(--text2)">Accès rapide + notifications sur votre téléphone</div>
+      </div>
+      ${window.canInstallPWA?.() ? `<button class="btn btn-sm btn-primary" onclick="installPWA()">Installer</button>` : ''}
+    </div>` : ''}
+
     ${S.user ? renderMyTournaments() : renderLanding()}
   </div>`;
 }
@@ -161,14 +295,14 @@ function renderLanding() {
     <div style="font-size:48px;margin-bottom:1rem">🎾</div>
     <h2 style="margin-bottom:.5rem;font-size:22px">Organisez vos tournois entre amis</h2>
     <p style="color:var(--text2);font-size:14px;line-height:1.7;margin-bottom:1.5rem">
-      Créez un tournoi, partagez le lien dans votre groupe WhatsApp.<br>
-      Vos amis s'inscrivent, suivent le tableau et voient les contacts de leurs adversaires en direct.
+      Créez un tournoi, partagez le lien dans WhatsApp.<br>
+      Vos amis s'inscrivent en un clic et reçoivent des notifications pour leurs matchs.
     </p>
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="goAuth('signup')">Créer un compte gratuit</button>
       <button class="btn" onclick="goAuth('login')">Se connecter</button>
     </div>
-    <p style="font-size:12px;color:var(--text2);margin-top:1.5rem">100% gratuit · Aucun serveur à gérer · Lien partageable WhatsApp</p>
+    <p style="font-size:12px;color:var(--text2);margin-top:1.5rem">100% gratuit · PWA installable · Notifications push & email</p>
   </div>`;
 }
 
@@ -179,16 +313,16 @@ function renderMyTournaments() {
       <button class="btn btn-primary" onclick="S.page='create';S.error=null;render()">+ Nouveau tournoi</button>
     </div>
     ${!S.myTournaments.length
-      ? `<div class="card empty" style="text-align:center;padding:2rem">
+      ? `<div class="card" style="text-align:center;padding:2rem">
           <div style="font-size:32px;margin-bottom:.75rem">🎾</div>
-          <div style="margin-bottom:1rem;color:var(--text2)">Vous n'avez pas encore créé de tournoi.</div>
+          <div style="margin-bottom:1rem;color:var(--text2)">Aucun tournoi créé.</div>
           <button class="btn btn-primary" onclick="S.page='create';S.error=null;render()">Créer mon premier tournoi</button>
          </div>`
-      : `<div class="grid3">${S.myTournaments.map(t => `
+      : `<div class="grid3">${S.myTournaments.map(t=>`
           <div class="card" style="cursor:pointer" onclick="goTournament('${t.slug}')">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
               <div style="font-weight:600;font-size:14px;flex:1;margin-right:8px">${t.name}</div>
-              <span class="status s-${t.status}" style="font-size:10px;white-space:nowrap">${statusLabel(t.status)}</span>
+              <span class="status s-${t.status}" style="font-size:10px">${statusLabel(t.status)}</span>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:12px">
               <span class="pill ${t.mode==='double'?'pill-double':'pill-simple'}">${t.mode==='double'?'Double':'Simple'}</span>
@@ -281,11 +415,10 @@ function renderTournamentPage() {
           <span class="status s-${t.status}">${statusLabel(t.status)}</span>
           <span class="badge">${S.players.length} joueur${S.players.length!==1?'s':''}</span>
           <span class="pill ${t.mode==='double'?'pill-double':'pill-simple'}">${t.mode==='double'?'Double':'Simple'}</span>
-          <span class="pill" style="background:var(--bg2);color:var(--text2)">${t.format==='pools+bracket'?'Poules + Tableau':'Tableau direct'}</span>
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
-        <button class="btn btn-success" onclick="shareLink('${t.slug}')">📤 Partager WhatsApp</button>
+        <button class="btn btn-success" onclick="shareLink('${t.slug}')">📤 Partager</button>
         ${isOwner ? (S.pubTab==='__admin__'
           ? `<button class="btn" onclick="S.pubTab='register';render()">Vue joueur</button>`
           : `<button class="btn btn-primary" onclick="S.pubTab='__admin__';render()">Admin</button>`)
@@ -306,11 +439,8 @@ function renderPublicTabs() {
     {id:'players', label:'Joueurs'},
   ];
   const renderers = {
-    register: renderRegister,
-    bracket:  () => renderBracketView(false),
-    pools:    () => renderPoolsView(false),
-    matchs:   renderMyMatches,
-    players:  renderPlayersPublic,
+    register: renderRegister, bracket: ()=>renderBracketView(false),
+    pools: ()=>renderPoolsView(false), matchs: renderMyMatches, players: renderPlayersPublic,
   };
   return `<div class="tab-bar">${tabs.map(tab=>`
     <button class="tab ${S.pubTab===tab.id?'active':''}" onclick="S.pubTab='${tab.id}';render()">${tab.label}</button>`).join('')}
@@ -320,12 +450,10 @@ function renderPublicTabs() {
 function renderAdminTabs() {
   const t = S.tournament;
   const tabs = [
-    {id:'setup',    label:'Configuration'},
-    {id:'players',  label:'Joueurs'},
-    ...(t.mode==='double'          ?[{id:'teams',   label:'Équipes'}]:[]),
-    ...(t.format==='pools+bracket' ?[{id:'pools',   label:'Poules'}] :[]),
-    {id:'bracket',  label:'Tableau'},
-    {id:'standings',label:'Classement'},
+    {id:'setup',label:'Configuration'},{id:'players',label:'Joueurs'},
+    ...(t.mode==='double'?[{id:'teams',label:'Équipes'}]:[]),
+    ...(t.format==='pools+bracket'?[{id:'pools',label:'Poules'}]:[]),
+    {id:'bracket',label:'Tableau'},{id:'standings',label:'Classement'},
   ];
   const renderers = {
     setup: renderSetup, players: renderAdminPlayers, teams: renderAdminTeams,
@@ -337,34 +465,58 @@ function renderAdminTabs() {
 }
 
 // ============================================================
-//  PUBLIC VIEWS
+//  REGISTER VIEW — avec demande de notifications
 // ============================================================
 function renderRegister() {
   const t = S.tournament;
   if (t.status !== 'open') return `<div class="empty">Les inscriptions sont fermées.</div>`;
+  const notifGranted = S.notifPermission === 'granted';
   return `<div class="reg-card"><div class="card">
     <h3>S'inscrire au tournoi</h3>
-    <div class="fg" style="margin-bottom:8px"><label>Prénom & Nom *</label><input id="reg-name" placeholder="Rafael Nadal"/></div>
     <div class="frow" style="margin-bottom:8px">
-      <div class="fg"><label>Téléphone</label><input id="reg-phone" placeholder="06 12 34 56 78"/></div>
-      <div class="fg"><label>Email</label><input id="reg-email" placeholder="email@exemple.com"/></div>
+      <div class="fg"><label>Prénom *</label><input id="reg-firstname" placeholder="Rafael"/></div>
+      <div class="fg"><label>Nom *</label><input id="reg-lastname" placeholder="Nadal"/></div>
     </div>
-    <div class="fg" style="margin-bottom:1rem"><label>Niveau</label>
-      <select id="reg-level"><option value="">— Non renseigné</option>
-        <option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Compétition</option>
+    <div class="fg" style="margin-bottom:8px"><label>Classement tennis</label>
+      <select id="reg-level">
+        <option value="">— Non classé</option>
+        <option>NC</option><option>40</option><option>30/5</option><option>30/4</option>
+        <option>30/3</option><option>30/2</option><option>30/1</option><option>30</option>
+        <option>15/5</option><option>15/4</option><option>15/3</option><option>15/2</option>
+        <option>15/1</option><option>15</option><option>5/6</option><option>4/6</option>
+        <option>3/6</option><option>2/6</option><option>1/6</option><option>0</option>
       </select>
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="registerPlayer()">S'inscrire</button>
+    <div class="frow" style="margin-bottom:8px">
+      <div class="fg"><label>Téléphone</label><input id="reg-phone" placeholder="06 12 34 56 78" type="tel"/></div>
+      <div class="fg"><label>Email</label><input id="reg-email" placeholder="email@exemple.com" type="email"/></div>
+    </div>
+    <!-- Notifications -->
+    <div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-size:13px;font-weight:500">🔔 Notifications</div>
+          <div style="font-size:12px;color:var(--text2)">Soyez alerté quand vous avez un match à jouer</div>
+        </div>
+        ${notifGranted
+          ? `<span class="pill" style="background:var(--green-bg);color:var(--green);white-space:nowrap">✓ Activées</span>`
+          : `<button class="btn btn-sm" onclick="requestNotifications()">Activer</button>`}
+      </div>
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="registerPlayer()">S'inscrire au tournoi</button>
   </div></div>`;
 }
 
+// ============================================================
+//  PUBLIC VIEWS
+// ============================================================
 function renderPlayersPublic() {
   if (!S.players.length) return `<div class="empty">Aucun joueur inscrit.</div>`;
   return `<div class="grid3">${S.players.map((p,i)=>{const c=ac(i);return`
     <div class="card" style="display:flex;align-items:center;gap:12px">
       <div class="avatar" style="width:40px;height:40px;background:${c.bg};color:${c.txt}">${ini(p.name)}</div>
       <div><div style="font-weight:500;font-size:14px">${p.name}</div>
-      <div style="font-size:12px;color:var(--text2)">${p.level||'Niveau non renseigné'}</div></div>
+      <div style="font-size:12px;color:var(--text2)">${p.level||'Non classé'}</div></div>
     </div>`;}).join('')}</div>`;
 }
 
@@ -385,15 +537,15 @@ function renderMyMatches() {
   const myMatches = allMatches.filter(m=>m.p1_id===pid||m.p2_id===pid);
   if (!myMatches.length) return sel+`<div class="empty">Aucun match programmé.</div>`;
   return sel+myMatches.map(m=>{
-    const oppId = m.p1_id===pid?m.p2_id:m.p1_id;
-    const opp = S.players.find(p=>p.id===oppId);
-    const isPool = !!S.poolMatches.find(x=>x.id===m.id);
-    const label = isPool?`Poule ${String.fromCharCode(65+(m.pool_index||0))}`:roundName(m.round,total);
-    const myScore  = m.p1_id===pid?m.score1:m.score2;
-    const oppScore = m.p1_id===pid?m.score2:m.score1;
-    const iWon = m.done&&m.winner_id===pid;
-    const oppWon = m.done&&m.winner_id===oppId;
-    const c = ac(opp?S.players.indexOf(opp):0);
+    const oppId=m.p1_id===pid?m.p2_id:m.p1_id;
+    const opp=S.players.find(p=>p.id===oppId);
+    const isPool=!!S.poolMatches.find(x=>x.id===m.id);
+    const label=isPool?`Poule ${String.fromCharCode(65+(m.pool_index||0))}`:roundName(m.round,total);
+    const myScore=m.p1_id===pid?m.score1:m.score2;
+    const oppScore=m.p1_id===pid?m.score2:m.score1;
+    const iWon=m.done&&m.winner_id===pid;
+    const oppWon=m.done&&m.winner_id===oppId;
+    const c=ac(opp?S.players.indexOf(opp):0);
     return `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <span class="pill" style="background:var(--bg2);color:var(--text2)">${label}</span>
@@ -410,10 +562,9 @@ function renderMyMatches() {
         <div class="avatar" style="width:44px;height:44px;background:${c.bg};color:${c.txt};font-size:14px">${ini(opp.name)}</div>
         <div style="flex:1">
           <div style="font-weight:600;font-size:14px;margin-bottom:2px">${opp.name}</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${opp.level||'Niveau non renseigné'}</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${opp.level||'Non classé'}</div>
           ${opp.phone?`<div style="font-size:13px;margin-bottom:3px"><span style="color:var(--text2);font-size:12px;display:inline-block;min-width:36px">Tél.</span><a href="tel:${opp.phone}" style="color:var(--blue);text-decoration:none">${opp.phone}</a></div>`:''}
           ${opp.email?`<div style="font-size:13px"><span style="color:var(--text2);font-size:12px;display:inline-block;min-width:36px">Email</span><a href="mailto:${opp.email}" style="color:var(--blue);text-decoration:none">${opp.email}</a></div>`:''}
-          ${!opp.phone&&!opp.email?`<span style="font-size:12px;color:var(--text2)">Pas de contact renseigné</span>`:''}
         </div>
       </div>`:`<div style="font-size:13px;color:var(--text2)">Adversaire non encore connu (TBD)</div>`}
     </div>`;
@@ -465,12 +616,12 @@ function renderSetup() {
       </div>
     </div>
     <div class="card">
-      <h3>Lien de partage WhatsApp</h3>
+      <h3>📤 Lien de partage</h3>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
         <input value="${window.location.origin}/${t.slug}" readonly style="flex:1;background:var(--bg2);font-size:12px;color:var(--text2)"/>
-        <button class="btn btn-success" onclick="shareLink('${t.slug}')">📤 Copier</button>
+        <button class="btn btn-success" onclick="shareLink('${t.slug}')">Copier</button>
       </div>
-      <div style="font-size:12px;color:var(--text2)">Envoyez ce lien dans votre groupe WhatsApp — vos amis peuvent s'inscrire et suivre le tournoi en direct.</div>
+      <div style="font-size:12px;color:var(--text2)">Envoyez ce lien dans votre groupe WhatsApp. Vos amis verront une page d'installation avant de s'inscrire.</div>
     </div>
   </div>`;
 }
@@ -482,9 +633,7 @@ function renderAdminPlayers() {
       <div class="fg"><label>Nom</label><input id="ap-name" placeholder="Prénom Nom"/></div>
       <div class="fg"><label>Téléphone</label><input id="ap-phone" placeholder="06…"/></div>
       <div class="fg"><label>Email</label><input id="ap-email" placeholder="email@…"/></div>
-      <div class="fg"><label>Niveau</label><select id="ap-level">
-        <option value="">—</option><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Compétition</option>
-      </select></div>
+      <div class="fg"><label>Classement</label><input id="ap-level" placeholder="15/2…"/></div>
       <button class="btn btn-primary" style="margin-top:18px" onclick="addPlayer()">+ Ajouter</button>
     </div>
     <button class="btn btn-sm" onclick="addSamples()">Ajouter 8 exemples</button>
@@ -527,8 +676,8 @@ function renderAdminTeams() {
 function renderPoolsView(admin) {
   if (!S.pools.length) return `<div class="empty">Lance le tournoi pour générer les poules.</div>`;
   return S.pools.map((pool,pi)=>{
-    const members = pool.member_ids||[];
-    const st = poolStandings(pi,members);
+    const members=pool.member_ids||[];
+    const st=poolStandings(pi,members);
     return `<div style="margin-bottom:2rem">
       <h2>Poule ${String.fromCharCode(65+pi)}</h2>
       <div class="card" style="overflow-x:auto;margin-bottom:1rem">
@@ -545,7 +694,7 @@ function renderPoolsView(admin) {
       <div style="display:flex;flex-direction:column;gap:6px">
         ${S.poolMatches.filter(m=>m.pool_index===pi).map(m=>`
           <div class="card" style="padding:.75rem 1rem;display:flex;align-items:center;gap:10px;cursor:${admin?'pointer':'default'}"
-            ${admin?`onclick="openMatchModal('pool','${m.id}')"`:''}">
+            ${admin?`onclick="openMatchModal('pool','${m.id}')"`:''}> 
             <span style="flex:1;font-weight:${m.winner_id===m.p1_id?600:400}">${getEntityName(m.p1_id)}</span>
             <span style="font-size:12px;color:var(--text2);white-space:nowrap">${formatScore(m)}</span>
             <span style="flex:1;text-align:right;font-weight:${m.winner_id===m.p2_id?600:400}">${getEntityName(m.p2_id)}</span>
@@ -569,7 +718,7 @@ function renderBracketView(admin) {
     const slotSize=firstCount/count;
     return Array.from({length:count},(_,i)=>(i+0.5)*slotSize*slotPx);
   }
-  const svgH=firstCount*slotPx+LABEL_H, svgW=total*COL_W-COL_GAP+4;
+  const svgH=firstCount*slotPx+LABEL_H,svgW=total*COL_W-COL_GAP+4;
   let paths='',cards='';
   for(let r=0;r<total-1;r++){
     const fromC=centers(r),toC=centers(r+1);
@@ -634,7 +783,7 @@ function renderStandings() {
 }
 
 // ============================================================
-//  MODAL
+//  MODAL SCORE
 // ============================================================
 function openMatchModal(type,id){S.currentModal={type,id};render();}
 function closeModal(){S.currentModal=null;render();}
@@ -697,11 +846,91 @@ function addSet(){
 }
 
 // ============================================================
+//  NOTIFICATIONS
+// ============================================================
+async function requestNotifications() {
+  if (!('Notification' in window)) { showToast('Notifications non supportées sur ce navigateur'); return; }
+  const perm = await Notification.requestPermission();
+  S.notifPermission = perm;
+  if (perm === 'granted') {
+    await subscribeToPush();
+    showToast('Notifications activées ! 🔔');
+  } else {
+    showToast('Notifications refusées');
+  }
+  render();
+}
+
+async function subscribeToPush() {
+  try {
+    const reg = window._swRegistration || await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+    });
+    // Sauvegarder la souscription en base
+    const playerId = S.myPlayerId;
+    const userId   = S.user?.id || null;
+    await sb.from('push_subscriptions').upsert({
+      player_id: playerId || null,
+      user_id:   userId,
+      subscription: sub.toJSON(),
+    });
+    return sub;
+  } catch (err) {
+    console.warn('Push subscribe error:', err);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64  = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+// Appelé après saveScore pour notifier les joueurs concernés
+async function notifyMatchPlayers(type, matchId) {
+  const arr  = type === 'pool' ? S.poolMatches : S.bracketMatches;
+  const match = arr.find(x => x.id === matchId);
+  if (!match || !match.p1_id || !match.p2_id) return;
+
+  const rounds = [...new Set(S.bracketMatches.map(m=>m.round))].sort((a,b)=>a-b);
+  const label  = type === 'pool'
+    ? `Poule ${String.fromCharCode(65 + (match.pool_index || 0))}`
+    : roundName(match.round, rounds.length);
+
+  const tournamentUrl = `${window.location.origin}/${S.tournament.slug}`;
+
+  // Récupérer les souscriptions push des deux joueurs
+  const [sub1, sub2] = await Promise.all([
+    sb.from('push_subscriptions').select('*').eq('player_id', match.p1_id).maybeSingle(),
+    sb.from('push_subscriptions').select('*').eq('player_id', match.p2_id).maybeSingle(),
+  ]);
+
+  const p1 = S.players.find(p=>p.id===match.p1_id);
+  const p2 = S.players.find(p=>p.id===match.p2_id);
+
+  // Appeler l'Edge Function pour chaque joueur
+  const calls = [];
+  if (p1 && p2) {
+    calls.push(sb.functions.invoke('notify-match', { body: {
+      player: { ...p1, push_subscription: sub1.data?.subscription || null },
+      opponent: p2, tournamentName: S.tournament.name, tournamentUrl, matchLabel: label,
+    }}));
+    calls.push(sb.functions.invoke('notify-match', { body: {
+      player: { ...p2, push_subscription: sub2.data?.subscription || null },
+      opponent: p1, tournamentName: S.tournament.name, tournamentUrl, matchLabel: label,
+    }}));
+  }
+  await Promise.allSettled(calls);
+}
+
+// ============================================================
 //  ACTIONS — AUTH
 // ============================================================
 function goAuth(mode){S.authMode=mode;S.page='auth';S.error=null;render();}
 function goHome(){S.tournament=null;S.page='home';S.error=null;history.pushState({},'','/');loadMyTournaments().then(render);}
-
 async function goTournament(slug){
   history.pushState({},'','/'+slug);
   S.loading=true;render();
@@ -715,11 +944,10 @@ async function submitAuth(){
   if(!email||!pwd){S.error='Email et mot de passe requis';render();return;}
   S.error=null;
   if(S.authMode==='signup'){
-    const username=(document.getElementById('auth-username')?.value||'').trim()||email.split('@')[0];
     const {error}=await sb.auth.signUp({email,password:pwd});
     if(error){S.error=error.message;render();return;}
-    alert('Compte créé ! Vérifiez votre email pour confirmer votre inscription, puis reconnectez-vous.');
-    S.authMode='login';S.page='auth';render();
+    alert('Compte créé ! Vérifiez votre email pour confirmer, puis connectez-vous.');
+    S.authMode='login';render();
   } else {
     const {error}=await sb.auth.signInWithPassword({email,password:pwd});
     if(error){S.error='Email ou mot de passe incorrect';render();return;}
@@ -736,7 +964,7 @@ async function createTournament(){
   const name=document.getElementById('c-name')?.value.trim();
   if(!name){S.error='Le nom est requis';render();return;}
   S.error=null;
-  const slug=newSlug();
+  const slug=nsl();
   const {data,error}=await sb.from('tournaments').insert({
     owner_id:S.user.id,slug,name,
     mode:document.getElementById('c-mode').value,
@@ -746,18 +974,17 @@ async function createTournament(){
   }).select().single();
   if(error){S.error=error.message;render();return;}
   await loadMyTournaments();
+  // Copier le lien auto
+  const url=`${window.location.origin}/${slug}`;
+  navigator.clipboard.writeText(url).catch(()=>{});
   await goTournament(slug);
+  showToast('Tournoi créé ! Lien copié dans le presse-papiers 🎾');
 }
 
 async function saveSettings(){
   const t=S.tournament;
-  const {error}=await sb.from('tournaments').update({
-    name:t.name,mode:t.mode,format:t.format,
-    score_mode:t.score_mode,max_players:t.max_players,
-    pool_size:t.pool_size,pool_advance:t.pool_advance,
-  }).eq('id',t.id);
-  if(error){alert('Erreur: '+error.message);return;}
-  alert('Paramètres sauvegardés !');
+  await sb.from('tournaments').update({name:t.name,mode:t.mode,format:t.format,score_mode:t.score_mode,max_players:t.max_players,pool_size:t.pool_size,pool_advance:t.pool_advance}).eq('id',t.id);
+  showToast('Paramètres sauvegardés !');
 }
 
 async function setStatus(status){
@@ -767,26 +994,33 @@ async function setStatus(status){
 
 function shareLink(slug){
   const url=`${window.location.origin}/${slug}`;
-  navigator.clipboard.writeText(url).then(()=>{S.shareToast=true;render();}).catch(()=>{prompt('Copiez ce lien et envoyez-le dans WhatsApp :',url);});
+  navigator.clipboard.writeText(url).then(()=>{S.shareToast=true;render();}).catch(()=>{prompt('Copiez ce lien :',url);});
 }
 
 // ============================================================
 //  ACTIONS — PLAYERS
 // ============================================================
 async function registerPlayer(){
-  const name=document.getElementById('reg-name')?.value.trim();
-  if(!name){alert('Le nom est requis');return;}
+  const first=document.getElementById('reg-firstname')?.value.trim();
+  const last=document.getElementById('reg-lastname')?.value.trim();
+  if(!first||!last){alert('Prénom et nom requis');return;}
+  const name=`${first} ${last}`;
   if(S.players.length>=S.tournament.max_players){alert('Tournoi complet !');return;}
   if(S.players.find(p=>p.name.toLowerCase()===name.toLowerCase())){alert('Ce joueur est déjà inscrit');return;}
   const {data,error}=await sb.from('players').insert({
     tournament_id:S.tournament.id,name,
-    phone:document.getElementById('reg-phone')?.value.trim(),
-    email:document.getElementById('reg-email')?.value.trim(),
-    level:document.getElementById('reg-level')?.value,
+    phone:document.getElementById('reg-phone')?.value.trim()||null,
+    email:document.getElementById('reg-email')?.value.trim()||null,
+    level:document.getElementById('reg-level')?.value||null,
+    user_id:S.user?.id||null,
   }).select().single();
   if(error){alert('Erreur: '+error.message);return;}
   S.players.push(data);
-  alert(name+' inscrit avec succès !');render();
+  S.myPlayerId=data.id;
+  // Souscrire aux push si permission accordée
+  if(S.notifPermission==='granted')await subscribeToPush();
+  showToast(`${name} inscrit ! 🎾`);
+  S.pubTab='matchs';render();
 }
 
 async function addPlayer(){
@@ -810,14 +1044,14 @@ async function removePlayer(id){
 
 async function addSamples(){
   const samples=[
-    {name:'Alice Martin',phone:'06 11 22 33 44',email:'alice@tennis.fr',level:'Avancé'},
-    {name:'Bob Dupont',phone:'06 55 66 77 88',email:'bob@tennis.fr',level:'Intermédiaire'},
-    {name:'Claire Leroy',phone:'07 12 34 56 78',email:'claire@tennis.fr',level:'Compétition'},
-    {name:'David Moreau',phone:'06 98 76 54 32',email:'david@tennis.fr',level:'Avancé'},
-    {name:'Emma Petit',phone:'07 23 45 67 89',email:'emma@tennis.fr',level:'Débutant'},
-    {name:'Florian Simon',phone:'06 34 56 78 90',email:'florian@tennis.fr',level:'Intermédiaire'},
-    {name:'Gaëlle Thomas',phone:'07 45 67 89 01',email:'gaelle@tennis.fr',level:'Avancé'},
-    {name:'Hugo Blanc',phone:'06 56 78 90 12',email:'hugo@tennis.fr',level:'Compétition'},
+    {name:'Alice Martin',phone:'06 11 22 33 44',email:'alice@tennis.fr',level:'15/2'},
+    {name:'Bob Dupont',phone:'06 55 66 77 88',email:'bob@tennis.fr',level:'30'},
+    {name:'Claire Leroy',phone:'07 12 34 56 78',email:'claire@tennis.fr',level:'5/6'},
+    {name:'David Moreau',phone:'06 98 76 54 32',email:'david@tennis.fr',level:'15/4'},
+    {name:'Emma Petit',phone:'07 23 45 67 89',email:'emma@tennis.fr',level:'NC'},
+    {name:'Florian Simon',phone:'06 34 56 78 90',email:'florian@tennis.fr',level:'30/2'},
+    {name:'Gaëlle Thomas',phone:'07 45 67 89 01',email:'gaelle@tennis.fr',level:'15/3'},
+    {name:'Hugo Blanc',phone:'06 56 78 90 12',email:'hugo@tennis.fr',level:'4/6'},
   ];
   const toAdd=samples.filter(s=>!S.players.find(p=>p.name===s.name)).map(s=>({...s,tournament_id:S.tournament.id}));
   if(!toAdd.length)return;
@@ -836,28 +1070,18 @@ async function addTeam(){
   const {data}=await sb.from('teams').insert({tournament_id:S.tournament.id,name,p1_id:p1,p2_id:p2}).select().single();
   S.teams.push(data);document.getElementById('tname').value='';render();
 }
-
-async function removeTeam(id){
-  await sb.from('teams').delete().eq('id',id);
-  S.teams=S.teams.filter(t=>t.id!==id);render();
-}
-
+async function removeTeam(id){await sb.from('teams').delete().eq('id',id);S.teams=S.teams.filter(t=>t.id!==id);render();}
 async function autoTeams(){
   if(S.players.length<2){alert('Ajoutez au moins 2 joueurs');return;}
-  await sb.from('teams').delete().eq('tournament_id',S.tournament.id);
-  S.teams=[];
+  await sb.from('teams').delete().eq('tournament_id',S.tournament.id);S.teams=[];
   const sh=[...S.players].sort(()=>Math.random()-.5);
   const newTeams=[];
-  for(let i=0;i<Math.floor(sh.length/2);i++){
-    const a=sh[i*2],b=sh[i*2+1];
-    newTeams.push({tournament_id:S.tournament.id,name:a.name.split(' ')[0]+'/'+b.name.split(' ')[0],p1_id:a.id,p2_id:b.id});
-  }
-  const {data}=await sb.from('teams').insert(newTeams).select();
-  S.teams=data||[];render();
+  for(let i=0;i<Math.floor(sh.length/2);i++){const a=sh[i*2],b=sh[i*2+1];newTeams.push({tournament_id:S.tournament.id,name:a.name.split(' ')[0]+'/'+b.name.split(' ')[0],p1_id:a.id,p2_id:b.id});}
+  const {data}=await sb.from('teams').insert(newTeams).select();S.teams=data||[];render();
 }
 
 // ============================================================
-//  ACTIONS — START
+//  TOURNAMENT START
 // ============================================================
 async function startTournament(){
   const entities=getEntities();
@@ -869,11 +1093,17 @@ async function startTournament(){
     sb.from('bracket_matches').delete().eq('tournament_id',S.tournament.id),
   ]);
   S.pools=[];S.poolMatches=[];S.bracketMatches=[];
-  if(S.tournament.format==='pools+bracket') await generatePools(entities);
+  if(S.tournament.format==='pools+bracket')await generatePools(entities);
   else await generateBracket(entities);
   await setStatus('running');
   S.adminTab=S.tournament.format==='pools+bracket'?'pools':'bracket';
   S.loading=false;render();
+  // Notifier tous les joueurs de leur premier match
+  if(S.tournament.format==='bracket'){
+    for(const m of S.bracketMatches.filter(x=>x.round===0&&x.p1_id&&x.p2_id&&!x.done)){
+      await notifyMatchPlayers('bracket',m.id);
+    }
+  }
 }
 
 // ============================================================
@@ -882,20 +1112,13 @@ async function startTournament(){
 async function generatePools(entities){
   const sh=[...entities].sort(()=>Math.random()-.5);
   const size=S.tournament.pool_size,numPools=Math.ceil(sh.length/size);
-  const poolData=Array.from({length:numPools},(_,i)=>({
-    tournament_id:S.tournament.id,pool_index:i,
-    member_ids:sh.filter((_,j)=>j%numPools===i).map(e=>e.id),
-  }));
-  const {data:pools}=await sb.from('pools').insert(poolData).select();
-  S.pools=pools||[];
+  const poolData=Array.from({length:numPools},(_,i)=>({tournament_id:S.tournament.id,pool_index:i,member_ids:sh.filter((_,j)=>j%numPools===i).map(e=>e.id)}));
+  const {data:pools}=await sb.from('pools').insert(poolData).select();S.pools=pools||[];
   const matchData=[];
-  S.pools.forEach((pool,pi)=>{
-    const ms=pool.member_ids;
-    for(let i=0;i<ms.length;i++) for(let j=i+1;j<ms.length;j++)
-      matchData.push({tournament_id:S.tournament.id,pool_index:pi,p1_id:ms[i],p2_id:ms[j],done:false});
-  });
-  const {data:pm}=await sb.from('pool_matches').insert(matchData).select();
-  S.poolMatches=pm||[];
+  S.pools.forEach((pool,pi)=>{const ms=pool.member_ids;for(let i=0;i<ms.length;i++)for(let j=i+1;j<ms.length;j++)matchData.push({tournament_id:S.tournament.id,pool_index:pi,p1_id:ms[i],p2_id:ms[j],done:false});});
+  const {data:pm}=await sb.from('pool_matches').insert(matchData).select();S.poolMatches=pm||[];
+  // Notifier les joueurs de leurs matchs de poule
+  for(const m of S.poolMatches){await notifyMatchPlayers('pool',m.id);}
 }
 
 function poolStandings(pi,members){
@@ -911,14 +1134,14 @@ async function checkPoolsDone(){
   const allDone=S.pools.every((_,pi)=>S.poolMatches.filter(m=>m.pool_index===pi).every(m=>m.done));
   if(!allDone)return;
   const qualifiers=[];
-  S.pools.forEach((pool,pi)=>{
-    poolStandings(pi,pool.member_ids).slice(0,S.tournament.pool_advance).forEach(r=>qualifiers.push(r.id));
-  });
+  S.pools.forEach((pool,pi)=>{poolStandings(pi,pool.member_ids).slice(0,S.tournament.pool_advance).forEach(r=>qualifiers.push(r.id));});
   const qualEntities=qualifiers.map(id=>getEntities().find(e=>e.id===id)).filter(Boolean);
-  await sb.from('bracket_matches').delete().eq('tournament_id',S.tournament.id);
-  S.bracketMatches=[];
+  await sb.from('bracket_matches').delete().eq('tournament_id',S.tournament.id);S.bracketMatches=[];
   await generateBracket(qualEntities);
-  S.adminTab='bracket';render();
+  S.adminTab='bracket';
+  // Notifier les qualifiés
+  for(const m of S.bracketMatches.filter(x=>x.round===0&&x.p1_id&&x.p2_id)){await notifyMatchPlayers('bracket',m.id);}
+  render();
 }
 
 // ============================================================
@@ -926,21 +1149,15 @@ async function checkPoolsDone(){
 // ============================================================
 async function generateBracket(entities){
   let seeds=[...entities].sort(()=>Math.random()-.5);
-  let size=1;while(size<seeds.length)size*=2;
-  while(seeds.length<size)seeds.push(null);
+  let size=1;while(size<seeds.length)size*=2;while(seeds.length<size)seeds.push(null);
   const matchData=[];
-  for(let i=0;i<seeds.length;i+=2)
-    matchData.push({tournament_id:S.tournament.id,round:0,position:i/2,p1_id:seeds[i]?.id||null,p2_id:seeds[i+1]?.id||null,done:false});
-  const {data:r0}=await sb.from('bracket_matches').insert(matchData).select();
-  S.bracketMatches=r0||[];
+  for(let i=0;i<seeds.length;i+=2)matchData.push({tournament_id:S.tournament.id,round:0,position:i/2,p1_id:seeds[i]?.id||null,p2_id:seeds[i+1]?.id||null,done:false});
+  const {data:r0}=await sb.from('bracket_matches').insert(matchData).select();S.bracketMatches=r0||[];
   let prev=S.bracketMatches.filter(m=>m.round===0),r=1;
   while(prev.length>1){
     const nextData=[];
-    for(let i=0;i<prev.length;i+=2)
-      nextData.push({tournament_id:S.tournament.id,round:r,position:i/2,p1_id:null,p2_id:null,done:false,src1_id:prev[i].id,src2_id:prev[i+1].id});
-    const {data:rn}=await sb.from('bracket_matches').insert(nextData).select();
-    S.bracketMatches=[...S.bracketMatches,...(rn||[])];
-    prev=rn||[];r++;
+    for(let i=0;i<prev.length;i+=2)nextData.push({tournament_id:S.tournament.id,round:r,position:i/2,p1_id:null,p2_id:null,done:false,src1_id:prev[i].id,src2_id:prev[i+1].id});
+    const {data:rn}=await sb.from('bracket_matches').insert(nextData).select();S.bracketMatches=[...S.bracketMatches,...(rn||[])];prev=rn||[];r++;
   }
   await propagateByes();
 }
@@ -959,16 +1176,16 @@ async function propagateBracket(){
     changed=false;
     for(const m of S.bracketMatches){
       if(!m.src1_id)continue;
-      const s1=S.bracketMatches.find(x=>x.id===m.src1_id);
-      const s2=S.bracketMatches.find(x=>x.id===m.src2_id);
+      const s1=S.bracketMatches.find(x=>x.id===m.src1_id),s2=S.bracketMatches.find(x=>x.id===m.src2_id);
       let upd={};
       if(s1?.winner_id&&s1.winner_id!==m.p1_id){upd.p1_id=s1.winner_id;changed=true;}
       if(s2?.winner_id&&s2.winner_id!==m.p2_id){upd.p2_id=s2.winner_id;changed=true;}
       if(Object.keys(upd).length){
-        await sb.from('bracket_matches').update(upd).eq('id',m.id);
-        Object.assign(m,upd);
+        await sb.from('bracket_matches').update(upd).eq('id',m.id);Object.assign(m,upd);
         if(m.p1_id&&!m.p2_id&&!m.done){await sb.from('bracket_matches').update({winner_id:m.p1_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p1_id,done:true});}
         if(m.p2_id&&!m.p1_id&&!m.done){await sb.from('bracket_matches').update({winner_id:m.p2_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p2_id,done:true});}
+        // Notifier le prochain match si les deux joueurs sont connus
+        if(m.p1_id&&m.p2_id&&!m.done)await notifyMatchPlayers('bracket',m.id);
       }
     }
   }
@@ -981,8 +1198,7 @@ function setWinner(type,id,which){
   const arr=type==='pool'?S.poolMatches:S.bracketMatches;
   const match=arr.find(x=>x.id===id);if(!match)return;
   const nw=which==='p1'?match.p1_id:match.p2_id;
-  match.winner_id=match.winner_id===nw?null:nw;
-  match.done=match.winner_id!==null;
+  match.winner_id=match.winner_id===nw?null:nw;match.done=match.winner_id!==null;
   S.currentModal={type,id};render();
 }
 
@@ -993,23 +1209,19 @@ async function saveScore(type,id,usesSets){
   if(usesSets){
     const sets=[];let w1=0,w2=0,i=0;
     while(document.getElementById('s1-'+i)){
-      const a=parseInt(document.getElementById('s1-'+i).value)||0;
-      const b=parseInt(document.getElementById('s2-'+i).value)||0;
-      if(a>0||b>0){sets.push([a,b]);if(a>b)w1++;else if(b>a)w2++;}
-      i++;
+      const a=parseInt(document.getElementById('s1-'+i).value)||0,b=parseInt(document.getElementById('s2-'+i).value)||0;
+      if(a>0||b>0){sets.push([a,b]);if(a>b)w1++;else if(b>a)w2++;}i++;
     }
     if(!sets.length){alert('Entrez au moins un set');return;}
     upd={sets,score1:w1,score2:w2,winner_id:w1>w2?match.p1_id:match.p2_id,done:true};
   } else {
-    const s1=parseInt(document.getElementById('ms1')?.value);
-    const s2=parseInt(document.getElementById('ms2')?.value);
+    const s1=parseInt(document.getElementById('ms1')?.value),s2=parseInt(document.getElementById('ms2')?.value);
     const winnerId=match.winner_id||(!isNaN(s1)&&!isNaN(s2)&&s1!==s2?(s1>s2?match.p1_id:match.p2_id):null);
     if(!winnerId){alert('Désignez un vainqueur');return;}
     upd={score1:isNaN(s1)?null:s1,score2:isNaN(s2)?null:s2,winner_id:winnerId,done:true};
   }
   const table=type==='pool'?'pool_matches':'bracket_matches';
-  await sb.from(table).update(upd).eq('id',id);
-  Object.assign(match,upd);
+  await sb.from(table).update(upd).eq('id',id);Object.assign(match,upd);
   if(type==='pool')await checkPoolsDone();
   if(type==='bracket')await propagateBracket();
   closeModal();
@@ -1020,8 +1232,7 @@ async function resetMatch(type,id){
   const upd={score1:null,score2:null,sets:null,winner_id:null,done:false};
   await sb.from(table).update(upd).eq('id',id);
   const arr=type==='pool'?S.poolMatches:S.bracketMatches;
-  const match=arr.find(x=>x.id===id);
-  if(match)Object.assign(match,upd);
+  const match=arr.find(x=>x.id===id);if(match)Object.assign(match,upd);
   closeModal();
 }
 
@@ -1035,20 +1246,13 @@ function getEntityName(id){
   const p=S.players.find(x=>x.id===id);return p?p.name:'?';
 }
 function roundName(r,total){
-  if(r===total-1)return'Finale';
-  if(r===total-2)return'Demi-finale';
-  if(r===total-3)return'Quart de finale';
-  return`Tour ${r+1}`;
+  if(r===total-1)return'Finale';if(r===total-2)return'Demi-finale';if(r===total-3)return'Quart de finale';return`Tour ${r+1}`;
 }
 function formatScore(m){
-  if(!m.done)return'vs';
-  if(m.sets&&m.sets.length)return m.sets.map(s=>s[0]+'-'+s[1]).join(' ');
-  if(m.score1!==null&&m.score1!==undefined)return m.score1+' — '+m.score2;
-  return getEntityName(m.winner_id)+' gagne';
+  if(!m.done)return'vs';if(m.sets&&m.sets.length)return m.sets.map(s=>s[0]+'-'+s[1]).join(' ');
+  if(m.score1!==null&&m.score1!==undefined)return m.score1+' — '+m.score2;return getEntityName(m.winner_id)+' gagne';
 }
-function statusLabel(s){
-  return{open:'Inscriptions ouvertes',running:'En cours',done:'Terminé',closed:'Inscriptions fermées'}[s]||s;
-}
+function statusLabel(s){return{open:'Inscriptions ouvertes',running:'En cours',done:'Terminé',closed:'Inscriptions fermées'}[s]||s;}
 
 // ============================================================
 //  NAVIGATION
