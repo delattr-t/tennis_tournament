@@ -31,7 +31,7 @@ let S = {
   players: [], teams: [], pools: [], poolMatches: [], bracketMatches: [],
   adminTab: 'setup', pubTab: 'register',
   myPlayerId: null, currentModal: null,
-  loading: false, error: null,
+  loading: false, error: null, successMsg: null,
   shareToast: false,
   // PWA
   pwaInstallable: false,
@@ -341,24 +341,40 @@ function renderMyTournaments() {
 // ============================================================
 function renderAuth() {
   const isLogin = S.authMode === 'login';
+  const isForgot = S.authMode === 'forgot';
   return `<div class="app"><div style="max-width:380px;margin:2rem auto">
-    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.error=null;render()">← Retour</button>
+    <button class="btn btn-sm" style="margin-bottom:1rem" onclick="S.page='home';S.authMode='login';S.error=null;render()">← Retour</button>
     <div class="card">
-      <h3 style="margin-bottom:1rem">${isLogin?'Connexion':'Créer un compte'}</h3>
+      <h3 style="margin-bottom:1rem">${isForgot?'Mot de passe oublié':isLogin?'Connexion':'Créer un compte'}</h3>
       ${S.error?`<div style="padding:8px 12px;background:var(--red-bg);color:var(--red);border-radius:var(--radius);margin-bottom:10px;font-size:13px">${S.error}</div>`:''}
-      ${!isLogin?`<div class="fg" style="margin-bottom:8px"><label>Nom d'utilisateur</label><input id="auth-username" placeholder="MonPseudo"/></div>`:''}
-      <div class="fg" style="margin-bottom:8px"><label>Email</label>
-        <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitAuth()"/>
-      </div>
-      <div class="fg" style="margin-bottom:1rem"><label>Mot de passe</label>
-        <input type="password" id="auth-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAuth()"/>
-      </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">${isLogin?'Se connecter':'Créer le compte'}</button>
-      <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
-        ${isLogin
-          ? `Pas de compte ? <a href="#" onclick="S.authMode='signup';S.error=null;render();return false" style="color:var(--blue)">S'inscrire</a>`
-          : `Déjà un compte ? <a href="#" onclick="S.authMode='login';S.error=null;render();return false" style="color:var(--blue)">Se connecter</a>`}
-      </div>
+      ${S.successMsg?`<div style="padding:8px 12px;background:var(--green-bg);color:var(--green);border-radius:var(--radius);margin-bottom:10px;font-size:13px">${S.successMsg}</div>`:''}
+
+      ${isForgot ? `
+        <div class="fg" style="margin-bottom:1rem"><label>Email</label>
+          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitForgot()"/>
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="submitForgot()">Envoyer le lien de réinitialisation</button>
+        <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
+          <a href="#" onclick="S.authMode='login';S.error=null;S.successMsg=null;render();return false" style="color:var(--blue)">← Retour à la connexion</a>
+        </div>
+      ` : `
+        ${!isLogin?`<div class="fg" style="margin-bottom:8px"><label>Nom d'utilisateur</label><input id="auth-username" placeholder="MonPseudo"/></div>`:''}
+        <div class="fg" style="margin-bottom:8px"><label>Email</label>
+          <input type="email" id="auth-email" placeholder="email@exemple.com" onkeydown="if(event.key==='Enter')submitAuth()"/>
+        </div>
+        <div class="fg" style="margin-bottom:${isLogin?'6px':'1rem'}"><label>Mot de passe</label>
+          <input type="password" id="auth-pwd" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitAuth()"/>
+        </div>
+        ${isLogin?`<div style="text-align:right;margin-bottom:1rem">
+          <a href="#" onclick="S.authMode='forgot';S.error=null;S.successMsg=null;render();return false" style="font-size:12px;color:var(--text2)">Mot de passe oublié ?</a>
+        </div>`:''}
+        <button class="btn btn-primary" style="width:100%" onclick="submitAuth()">${isLogin?'Se connecter':'Créer le compte'}</button>
+        <div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text2)">
+          ${isLogin
+            ? `Pas de compte ? <a href="#" onclick="S.authMode='signup';S.error=null;render();return false" style="color:var(--blue)">S'inscrire</a>`
+            : `Déjà un compte ? <a href="#" onclick="S.authMode='login';S.error=null;render();return false" style="color:var(--blue)">Se connecter</a>`}
+        </div>
+      `}
     </div>
   </div></div>`;
 }
@@ -942,24 +958,34 @@ async function submitAuth(){
   const email=document.getElementById('auth-email')?.value.trim();
   const pwd=document.getElementById('auth-pwd')?.value;
   if(!email||!pwd){S.error='Email et mot de passe requis';render();return;}
-  S.error=null;
+  S.error=null;S.successMsg=null;
   if(S.authMode==='signup'){
-    const {data, error}=await sb.auth.signUp({email,password:pwd});
+    const {error}=await sb.auth.signUp({email,password:pwd});
     if(error){S.error=error.message;render();return;}
-    // Connexion directe si pas de confirmation email requise
-    const {error: loginError}=await sb.auth.signInWithPassword({email,password:pwd});
-    if(loginError){
-      // La confirmation email est peut-être activée
-      alert('Compte créé ! Vérifiez votre email pour confirmer, puis connectez-vous.');
-      S.authMode='login';render();
+    // Tenter connexion directe (fonctionne si confirmation désactivée)
+    const {error:loginErr}=await sb.auth.signInWithPassword({email,password:pwd});
+    if(loginErr){
+      S.authMode='login';
+      S.successMsg='Compte créé ! Vous pouvez vous connecter.';
+      render();
     } else {
       S.page='home';render();
     }
   } else {
     const {error}=await sb.auth.signInWithPassword({email,password:pwd});
     if(error){S.error='Email ou mot de passe incorrect';render();return;}
-    S.page='home';render();
+    S.page='home';S.error=null;S.successMsg=null;render();
   }
+}
+
+async function submitForgot(){
+  const email=document.getElementById('auth-email')?.value.trim();
+  if(!email){S.error='Entrez votre email';render();return;}
+  S.error=null;
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/reset-password`});
+  if(error){S.error=error.message;render();return;}
+  S.successMsg='Email envoyé ! Vérifiez votre boîte mail.';
+  S.error=null;render();
 }
 
 async function signOut(){await sb.auth.signOut();S.user=null;S.profile=null;S.myTournaments=[];S.page='home';render();}
