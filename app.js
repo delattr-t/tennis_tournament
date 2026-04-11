@@ -1264,9 +1264,10 @@ async function generateBracket(entities){
 }
 
 async function propagateByes(){
-  for(const m of S.bracketMatches){
-    if(m.p1_id&&!m.p2_id){await sb.from('bracket_matches').update({winner_id:m.p1_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p1_id,done:true});}
-    if(m.p2_id&&!m.p1_id){await sb.from('bracket_matches').update({winner_id:m.p2_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p2_id,done:true});}
+  // Seulement pour le round 0 — si un slot est vide c'est un vrai BYE
+  for(const m of S.bracketMatches.filter(x=>x.round===0)){
+    if(m.p1_id&&!m.p2_id){ await sb.from('bracket_matches').update({winner_id:m.p1_id,done:true}).eq('id',m.id); Object.assign(m,{winner_id:m.p1_id,done:true}); }
+    if(m.p2_id&&!m.p1_id){ await sb.from('bracket_matches').update({winner_id:m.p2_id,done:true}).eq('id',m.id); Object.assign(m,{winner_id:m.p2_id,done:true}); }
   }
   await propagateBracket();
 }
@@ -1277,16 +1278,27 @@ async function propagateBracket(){
     changed=false;
     for(const m of S.bracketMatches){
       if(!m.src1_id)continue;
-      const s1=S.bracketMatches.find(x=>x.id===m.src1_id),s2=S.bracketMatches.find(x=>x.id===m.src2_id);
+      const s1=S.bracketMatches.find(x=>x.id===m.src1_id);
+      const s2=S.bracketMatches.find(x=>x.id===m.src2_id);
       let upd={};
-      if(s1?.winner_id&&s1.winner_id!==m.p1_id){upd.p1_id=s1.winner_id;changed=true;}
-      if(s2?.winner_id&&s2.winner_id!==m.p2_id){upd.p2_id=s2.winner_id;changed=true;}
+      // Propager uniquement les vrais vainqueurs (matchs terminés)
+      if(s1?.done&&s1.winner_id&&s1.winner_id!==m.p1_id){upd.p1_id=s1.winner_id;changed=true;}
+      if(s2?.done&&s2.winner_id&&s2.winner_id!==m.p2_id){upd.p2_id=s2.winner_id;changed=true;}
       if(Object.keys(upd).length){
-        await sb.from('bracket_matches').update(upd).eq('id',m.id);Object.assign(m,upd);
-        if(m.p1_id&&!m.p2_id&&!m.done){await sb.from('bracket_matches').update({winner_id:m.p1_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p1_id,done:true});}
-        if(m.p2_id&&!m.p1_id&&!m.done){await sb.from('bracket_matches').update({winner_id:m.p2_id,done:true}).eq('id',m.id);Object.assign(m,{winner_id:m.p2_id,done:true});}
-        // Notifier le prochain match si les deux joueurs sont connus
-        if(m.p1_id&&m.p2_id&&!m.done)await notifyMatchPlayers('bracket',m.id);
+        await sb.from('bracket_matches').update(upd).eq('id',m.id);
+        Object.assign(m,upd);
+        // BYE uniquement si les DEUX sources sont done et qu'un slot reste vide
+        const updated = {...m,...upd};
+        if(updated.p1_id&&!updated.p2_id&&s1?.done&&s2?.done&&!updated.done){
+          await sb.from('bracket_matches').update({winner_id:updated.p1_id,done:true}).eq('id',m.id);
+          Object.assign(m,{winner_id:updated.p1_id,done:true});
+        }
+        if(updated.p2_id&&!updated.p1_id&&s1?.done&&s2?.done&&!updated.done){
+          await sb.from('bracket_matches').update({winner_id:updated.p2_id,done:true}).eq('id',m.id);
+          Object.assign(m,{winner_id:updated.p2_id,done:true});
+        }
+        // Notifier si les deux joueurs sont connus et le match pas encore joué
+        if(updated.p1_id&&updated.p2_id&&!updated.done) await notifyMatchPlayers('bracket',m.id);
       }
     }
   }
