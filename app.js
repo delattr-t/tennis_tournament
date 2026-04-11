@@ -1094,8 +1094,24 @@ async function setStatus(status){
 }
 
 function shareLink(slug){
-  const url=`${window.location.origin}/${slug}`;
-  navigator.clipboard.writeText(url).then(()=>{S.shareToast=true;render();}).catch(()=>{prompt('Copiez ce lien :',url);});
+  const url = `${window.location.origin}/${slug}`;
+  // Trouver le nom du tournoi
+  const t = S.tournament?.slug === slug ? S.tournament : S.myTournaments.find(x=>x.slug===slug);
+  const name = t?.name || 'Tournoi de Tennis';
+  const text = `🎾 Vous êtes invité au "${name}" !\nCliquez ici pour vous inscrire et suivre le tableau en direct :`;
+
+  if (navigator.share) {
+    navigator.share({
+      title: `🎾 ${name}`,
+      text,
+      url,
+    }).catch(() => {});
+  } else {
+    // Fallback — copie dans le presse-papiers
+    navigator.clipboard.writeText(`${text}\n${url}`)
+      .then(() => { S.shareToast = true; render(); })
+      .catch(() => { prompt('Copiez ce lien et envoyez-le :', `${text}\n${url}`); });
+  }
 }
 
 // ============================================================
