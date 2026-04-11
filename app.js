@@ -1073,11 +1073,11 @@ async function notifyMatchPlayers(type, matchId) {
   // Appeler l'Edge Function pour chaque joueur
   const calls = [];
   if (p1 && p2) {
-    calls.push(sb.functions.invoke('notify-match', { body: {
+    calls.push(sb.functions.invoke('quick-task', { body: {
       player: { ...p1, push_subscription: sub1.data?.subscription || null },
       opponent: p2, tournamentName: S.tournament.name, tournamentUrl, matchLabel: label,
     }}));
-    calls.push(sb.functions.invoke('notify-match', { body: {
+    calls.push(sb.functions.invoke('quick-task', { body: {
       player: { ...p2, push_subscription: sub2.data?.subscription || null },
       opponent: p1, tournamentName: S.tournament.name, tournamentUrl, matchLabel: label,
     }}));
@@ -1212,7 +1212,7 @@ async function registerPlayer(){
 async function sendConfirmationEmail(player, tournament) {
   try {
     const tournamentUrl = `${window.location.origin}/${tournament.slug}`;
-    await sb.functions.invoke('notify-match', { body: {
+    await sb.functions.invoke('quick-task', { body: {
       type: 'confirmation',
       player,
       tournamentName: tournament.name,
