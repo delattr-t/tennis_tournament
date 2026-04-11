@@ -33,6 +33,7 @@ let S = {
   myPlayerId: null, currentModal: null,
   loading: false, error: null, successMsg: null,
   shareToast: false,
+  registerAnother: false,
   // PWA
   pwaInstallable: false,
   pwaInstalled: false,
@@ -529,16 +530,25 @@ function renderTournamentPage() {
 
 function renderPublicTabs() {
   const t = S.tournament;
+  const isOpen = t.status === 'open';
+  const alreadyRegistered = S.myPlayerId && S.players.find(p=>p.id===S.myPlayerId);
+
+  // Si inscriptions fermées et on est sur l'onglet inscription → aller sur tableau
+  if (S.pubTab === 'register' && !isOpen) S.pubTab = 'bracket';
+
   const tabs = [
-    {id:'register',label:'Inscription'},
+    ...(isOpen ? [{id:'register', label: alreadyRegistered ? '✓ Inscrit' : 'Inscription'}] : []),
     {id:'bracket', label:'Tableau'},
-    ...(t.format==='pools+bracket'?[{id:'pools',label:'Poules'}]:[]),
+    ...(t.format==='pools+bracket' ? [{id:'pools', label:'Poules'}] : []),
     {id:'matchs',  label:'Mes matchs'},
     {id:'players', label:'Joueurs'},
   ];
   const renderers = {
-    register: renderRegister, bracket: ()=>renderBracketView(false),
-    pools: ()=>renderPoolsView(false), matchs: renderMyMatches, players: renderPlayersPublic,
+    register: renderRegister,
+    bracket:  () => renderBracketView(false),
+    pools:    () => renderPoolsView(false),
+    matchs:   renderMyMatches,
+    players:  renderPlayersPublic,
   };
   return `<div class="tab-bar">${tabs.map(tab=>`
     <button class="tab ${S.pubTab===tab.id?'active':''}" onclick="S.pubTab='${tab.id}';render()">${tab.label}</button>`).join('')}
@@ -563,46 +573,78 @@ function renderAdminTabs() {
 }
 
 // ============================================================
-//  REGISTER VIEW — avec demande de notifications
+//  REGISTER VIEW
 // ============================================================
 function renderRegister() {
   const t = S.tournament;
-  if (t.status !== 'open') return `<div class="empty">Les inscriptions sont fermées.</div>`;
   const notifGranted = S.notifPermission === 'granted';
-  return `<div class="reg-card"><div class="card">
-    <h3>S'inscrire au tournoi</h3>
-    <div class="frow" style="margin-bottom:8px">
-      <div class="fg"><label>Prénom *</label><input id="reg-firstname" placeholder="Rafael"/></div>
-      <div class="fg"><label>Nom *</label><input id="reg-lastname" placeholder="Nadal"/></div>
-    </div>
-    <div class="fg" style="margin-bottom:8px"><label>Classement tennis</label>
-      <select id="reg-level">
-        <option value="">— Non classé</option>
-        <option>NC</option><option>40</option><option>30/5</option><option>30/4</option>
-        <option>30/3</option><option>30/2</option><option>30/1</option><option>30</option>
-        <option>15/5</option><option>15/4</option><option>15/3</option><option>15/2</option>
-        <option>15/1</option><option>15</option><option>5/6</option><option>4/6</option>
-        <option>3/6</option><option>2/6</option><option>1/6</option><option>0</option>
-      </select>
-    </div>
-    <div class="frow" style="margin-bottom:8px">
-      <div class="fg"><label>Téléphone</label><input id="reg-phone" placeholder="06 12 34 56 78" type="tel"/></div>
-      <div class="fg"><label>Email</label><input id="reg-email" placeholder="email@exemple.com" type="email"/></div>
-    </div>
-    <!-- Notifications -->
-    <div style="background:var(--bg2);border-radius:var(--radius);padding:12px;margin-bottom:1rem">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+  const myPlayer = S.myPlayerId ? S.players.find(p=>p.id===S.myPlayerId) : null;
+
+  // Déjà inscrit — afficher confirmation + bouton inscrire quelqu'un d'autre
+  if (myPlayer && !S.registerAnother) {
+    const c = ac(S.players.indexOf(myPlayer));
+    return `<div style="padding:8px 0">
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <div class="avatar" style="width:48px;height:48px;background:${c.bg};color:${c.txt};font-size:16px">${ini(myPlayer.name)}</div>
+          <div>
+            <div style="font-weight:700;font-size:15px">${myPlayer.name}</div>
+            <div style="font-size:12px;color:var(--c-green);font-weight:600">✓ Inscrit au tournoi</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${myPlayer.phone?`<div style="font-size:13px;display:flex;gap:8px"><span style="color:var(--text2);min-width:36px">Tél.</span><span>${myPlayer.phone}</span></div>`:''}
+          ${myPlayer.email?`<div style="font-size:13px;display:flex;gap:8px"><span style="color:var(--text2);min-width:36px">Email</span><span>${myPlayer.email}</span></div>`:''}
+          ${myPlayer.level?`<div style="font-size:13px;display:flex;gap:8px"><span style="color:var(--text2);min-width:36px">Classmt</span><span>${myPlayer.level}</span></div>`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" style="flex:1" onclick="S.pubTab='matchs';render()">Voir mes matchs →</button>
+        <button class="btn" onclick="S.registerAnother=true;render()">+ Inscrire quelqu'un d'autre</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div style="padding:8px 0">
+    ${myPlayer && S.registerAnother ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 12px;background:var(--tennis-green-lt);border-radius:var(--r)">
+      <span style="color:var(--tennis-green);font-weight:600;font-size:13px">✓ Vous êtes inscrit en tant que ${myPlayer.name}</span>
+      <button class="btn btn-sm btn-ghost" onclick="S.registerAnother=false;render()" style="margin-left:auto">Annuler</button>
+    </div>` : ''}
+    <div class="card">
+      <h3 style="margin-bottom:14px">${myPlayer ? 'Inscrire quelqu\'un d\'autre' : 'S\'inscrire au tournoi'}</h3>
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fg"><label>Prénom *</label><input id="reg-firstname" placeholder="Rafael"/></div>
+        <div class="fg"><label>Nom *</label><input id="reg-lastname" placeholder="Nadal"/></div>
+      </div>
+      <div class="fg" style="margin-bottom:12px"><label>Classement tennis</label>
+        <select id="reg-level">
+          <option value="">— Non classé</option>
+          <option>NC</option><option>40</option><option>30/5</option><option>30/4</option>
+          <option>30/3</option><option>30/2</option><option>30/1</option><option>30</option>
+          <option>15/5</option><option>15/4</option><option>15/3</option><option>15/2</option>
+          <option>15/1</option><option>15</option><option>5/6</option><option>4/6</option>
+          <option>3/6</option><option>2/6</option><option>1/6</option><option>0</option>
+        </select>
+      </div>
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fg"><label>Téléphone</label><input id="reg-phone" placeholder="06 12 34 56 78" type="tel"/></div>
+        <div class="fg"><label>Email</label><input id="reg-email" placeholder="email@exemple.com" type="email"/></div>
+      </div>
+      <div style="background:var(--tennis-yellow-lt);border:1px solid rgba(200,214,42,0.4);border-radius:var(--r);padding:11px 13px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
         <div>
-          <div style="font-size:13px;font-weight:500">🔔 Notifications</div>
-          <div style="font-size:12px;color:var(--text2)">Soyez alerté quand vous avez un match à jouer</div>
+          <div style="font-size:13px;font-weight:600">🔔 Notifications</div>
+          <div style="font-size:12px;color:var(--text2)">Alerté quand vous avez un match</div>
         </div>
         ${notifGranted
-          ? `<span class="pill" style="background:var(--green-bg);color:var(--green);white-space:nowrap">✓ Activées</span>`
+          ? `<span class="pill" style="background:var(--c-green-bg);color:var(--c-green);white-space:nowrap">✓ Activées</span>`
           : `<button class="btn btn-sm" onclick="requestNotifications()">Activer</button>`}
       </div>
+      <button class="btn btn-primary" style="width:100%;height:48px;border-radius:50px;font-size:15px" onclick="registerPlayer()">
+        ${myPlayer ? 'Inscrire ce joueur' : 'S\'inscrire au tournoi'}
+      </button>
     </div>
-    <button class="btn btn-primary" style="width:100%" onclick="registerPlayer()">S'inscrire au tournoi</button>
-  </div></div>`;
+  </div>`;
 }
 
 // ============================================================
@@ -623,48 +665,67 @@ function renderMyMatches() {
   const allMatches = [...S.poolMatches,...S.bracketMatches];
   const rounds = [...new Set(S.bracketMatches.map(m=>m.round))].sort((a,b)=>a-b);
   const total = rounds.length;
-  const sel = `<div class="frow" style="margin-bottom:1.25rem">
-    <div class="fg" style="max-width:280px"><label>Qui êtes-vous ?</label>
-      <select onchange="S.myPlayerId=this.value||null;render()">
-        <option value="">— Sélectionnez votre nom</option>
-        ${S.players.map(p=>`<option value="${p.id}" ${pid===p.id?'selected':''}>${p.name}</option>`).join('')}
-      </select>
-    </div>
+  const sel = `<div style="margin-bottom:16px">
+    <label>Qui êtes-vous ?</label>
+    <select onchange="S.myPlayerId=this.value||null;render()" style="max-width:280px">
+      <option value="">— Sélectionnez votre nom</option>
+      ${S.players.map(p=>`<option value="${p.id}" ${pid===p.id?'selected':''}>${p.name}</option>`).join('')}
+    </select>
   </div>`;
   if (!pid) return sel+`<div class="empty">Sélectionnez votre nom pour voir vos matchs.</div>`;
   const myMatches = allMatches.filter(m=>m.p1_id===pid||m.p2_id===pid);
-  if (!myMatches.length) return sel+`<div class="empty">Aucun match programmé.</div>`;
+  if (!myMatches.length) return sel+`<div class="empty">Aucun match programmé pour l'instant.</div>`;
+
   return sel+myMatches.map(m=>{
     const oppId=m.p1_id===pid?m.p2_id:m.p1_id;
     const opp=S.players.find(p=>p.id===oppId);
     const isPool=!!S.poolMatches.find(x=>x.id===m.id);
+    const type=isPool?'pool':'bracket';
     const label=isPool?`Poule ${String.fromCharCode(65+(m.pool_index||0))}`:roundName(m.round,total);
     const myScore=m.p1_id===pid?m.score1:m.score2;
     const oppScore=m.p1_id===pid?m.score2:m.score1;
     const iWon=m.done&&m.winner_id===pid;
     const oppWon=m.done&&m.winner_id===oppId;
     const c=ac(opp?S.players.indexOf(opp):0);
+    const canPlay = m.p1_id && m.p2_id; // les deux joueurs sont connus
+
     return `<div class="card" style="margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <span class="pill" style="background:var(--bg2);color:var(--text2)">${label}</span>
+        <span class="pill" style="background:var(--surface2);color:var(--text2)">${label}</span>
         ${m.done
-          ?`<span class="pill" style="background:${iWon?'var(--green-bg)':'var(--red-bg)'};color:${iWon?'var(--green)':'var(--red)'}">${iWon?'Victoire':'Défaite'}</span>`
-          :`<span class="pill" style="background:var(--amber-bg);color:var(--amber)">À jouer</span>`}
+          ?`<span class="pill" style="background:${iWon?'var(--c-green-bg)':'var(--c-red-bg)'};color:${iWon?'var(--c-green)':'var(--c-red)'}">${iWon?'✓ Victoire':'✗ Défaite'}</span>`
+          :canPlay?`<span class="pill" style="background:var(--c-amber-bg);color:var(--c-amber)">À jouer</span>`
+          :`<span class="pill" style="background:var(--surface2);color:var(--text2)">En attente</span>`}
       </div>
-      ${m.done?`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius)">
-        <span style="flex:1;font-size:13px;font-weight:${iWon?600:400}">Vous</span>
-        <span style="font-size:18px;font-weight:600;letter-spacing:2px">${myScore??'—'} — ${oppScore??'—'}</span>
-        <span style="flex:1;font-size:13px;text-align:right;font-weight:${oppWon?600:400}">${opp?opp.name:'?'}</span>
+
+      ${m.done?`<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px;background:${iWon?'var(--c-green-bg)':'var(--c-red-bg)'};border-radius:var(--r)">
+        <span style="flex:1;font-size:14px;font-weight:700;color:${iWon?'var(--c-green)':'var(--c-red)'}">Vous</span>
+        <span style="font-size:20px;font-weight:700;letter-spacing:3px;color:var(--text)">${myScore??'—'} — ${oppScore??'—'}</span>
+        <span style="flex:1;font-size:14px;text-align:right;font-weight:${oppWon?700:400};color:${oppWon?'var(--c-red)':'var(--text2)'}">${opp?opp.name:'?'}</span>
       </div>`:''}
+
       ${opp?`<div style="display:flex;align-items:center;gap:12px">
-        <div class="avatar" style="width:44px;height:44px;background:${c.bg};color:${c.txt};font-size:14px">${ini(opp.name)}</div>
+        <div class="avatar" style="width:46px;height:46px;background:${c.bg};color:${c.txt};font-size:15px;font-weight:700">${ini(opp.name)}</div>
         <div style="flex:1">
-          <div style="font-weight:600;font-size:14px;margin-bottom:2px">${opp.name}</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">${opp.level||'Non classé'}</div>
-          ${opp.phone?`<div style="font-size:13px;margin-bottom:3px"><span style="color:var(--text2);font-size:12px;display:inline-block;min-width:36px">Tél.</span><a href="tel:${opp.phone}" style="color:var(--blue);text-decoration:none">${opp.phone}</a></div>`:''}
-          ${opp.email?`<div style="font-size:13px"><span style="color:var(--text2);font-size:12px;display:inline-block;min-width:36px">Email</span><a href="mailto:${opp.email}" style="color:var(--blue);text-decoration:none">${opp.email}</a></div>`:''}
+          <div style="font-weight:700;font-size:14px;margin-bottom:2px">${opp.name}</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px">${opp.level||'Non classé'}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${opp.phone?`<a href="tel:${opp.phone}" class="btn btn-sm" style="text-decoration:none">📞 ${opp.phone}</a>`:''}
+            ${opp.email?`<a href="mailto:${opp.email}" class="btn btn-sm" style="text-decoration:none">✉️ ${opp.email}</a>`:''}
+          </div>
         </div>
-      </div>`:`<div style="font-size:13px;color:var(--text2)">Adversaire non encore connu (TBD)</div>`}
+      </div>`:`<div style="font-size:13px;color:var(--text2)">Adversaire non encore connu</div>`}
+
+      ${canPlay && !m.done ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <button class="btn btn-primary" style="width:100%;border-radius:50px" onclick="openMatchModal('${type}','${m.id}')">
+          Saisir le score de ce match
+        </button>
+      </div>` : ''}
+      ${m.done ? `
+      <div style="margin-top:10px;text-align:right">
+        <button class="btn btn-sm btn-ghost" onclick="openMatchModal('${type}','${m.id}')">Modifier le score</button>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1124,20 +1185,40 @@ async function registerPlayer(){
   const name=`${first} ${last}`;
   if(S.players.length>=S.tournament.max_players){alert('Tournoi complet !');return;}
   if(S.players.find(p=>p.name.toLowerCase()===name.toLowerCase())){alert('Ce joueur est déjà inscrit');return;}
+  const email=document.getElementById('reg-email')?.value.trim()||null;
+  const phone=document.getElementById('reg-phone')?.value.trim()||null;
+  const level=document.getElementById('reg-level')?.value||null;
   const {data,error}=await sb.from('players').insert({
-    tournament_id:S.tournament.id,name,
-    phone:document.getElementById('reg-phone')?.value.trim()||null,
-    email:document.getElementById('reg-email')?.value.trim()||null,
-    level:document.getElementById('reg-level')?.value||null,
+    tournament_id:S.tournament.id, name, phone, email, level,
     user_id:S.user?.id||null,
   }).select().single();
   if(error){alert('Erreur: '+error.message);return;}
   S.players.push(data);
-  S.myPlayerId=data.id;
-  // Souscrire aux push si permission accordée
-  if(S.notifPermission==='granted')await subscribeToPush();
+  // Si c'est l'inscription principale (pas "inscrire quelqu'un d'autre")
+  if(!S.registerAnother){
+    S.myPlayerId=data.id;
+    if(S.notifPermission==='granted') await subscribeToPush();
+  }
+  S.registerAnother=false;
+  // Email de confirmation
+  if(email){
+    await sendConfirmationEmail(data, S.tournament);
+  }
   showToast(`${name} inscrit ! 🎾`);
-  S.pubTab='matchs';render();
+  if(!S.registerAnother) { S.pubTab='matchs'; }
+  render();
+}
+
+async function sendConfirmationEmail(player, tournament) {
+  try {
+    const tournamentUrl = `${window.location.origin}/${tournament.slug}`;
+    await sb.functions.invoke('notify-match', { body: {
+      type: 'confirmation',
+      player,
+      tournamentName: tournament.name,
+      tournamentUrl,
+    }});
+  } catch(e) { console.warn('Confirmation email failed:', e); }
 }
 
 async function addPlayer(){
